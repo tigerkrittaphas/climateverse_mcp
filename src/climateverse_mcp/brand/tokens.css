@@ -1,0 +1,165 @@
+/* ==========================================================================
+   ClimateVerse report identity — design tokens
+   --------------------------------------------------------------------------
+   Source of truth for the report brand. Everything else (components.css,
+   report templates, chart palettes) is written against these roles, never
+   against raw hex.
+
+   Brand colors were sampled from the ClimateVerse wordmark (brand/logo.png):
+   a warm horizontal gradient spanning hues 345deg-30deg —
+     crimson #E72028 -> red #EA4127 -> orange #EE6925 -> amber #FBAA1A
+
+   The categorical series palette was derived by enumerating all 5040 orderings
+   of the hue set with brand orange fixed at slot 1, keeping only those with no
+   hard FAIL in BOTH light and dark, and picking among the top-scoring ties for
+   its opening colors. Worst adjacent CVD dE 10.4 light / 9.4 dark (>=8 target),
+   worst adjacent normal-vision dE 19.6 light / 19.3 dark (>=15 floor).
+   Re-validate with the dataviz skill's validate_palette.js after ANY change.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* --- Brand ------------------------------------------------------------ */
+  /* Chrome only: rules, wordmark, eyebrows, cover band. NEVER inside a chart,
+     where it would compete with the series palette for meaning. */
+  --cv-brand-crimson: #E72028;
+  --cv-brand-red:     #EA4127;
+  --cv-brand-orange:  #EE6925;
+  --cv-brand-amber:   #FBAA1A;
+  /* The wordmark gradient, reusable as a device (rules, bands, bar accents). */
+  --cv-brand-gradient: linear-gradient(
+    90deg,
+    var(--cv-brand-crimson) 0%,
+    var(--cv-brand-red)     22%,
+    var(--cv-brand-orange)  52%,
+    var(--cv-brand-amber)   100%
+  );
+  /* Accessible brand-colored TEXT. The gradient hues are all sub-4.5:1 on
+     white, so brand-tinted text uses this deepened step instead (6.69:1). */
+  --cv-brand-ink: #A8321B;
+
+  /* --- Surfaces & ink --------------------------------------------------- */
+  --cv-plane:          #FAFAF9;  /* page background */
+  --cv-surface:        #FFFFFF;  /* cards, chart surface */
+  --cv-surface-sunken: #F5F5F4;  /* table header, inset blocks */
+  --cv-ink:            #1A1614;  /* primary text            17.97:1 */
+  --cv-ink-secondary:  #57514D;  /* lead paragraphs, labels  7.81:1 */
+  --cv-ink-muted:      #7D7570;  /* captions, axis ticks     4.52:1 */
+  --cv-border:         #E7E3E0;  /* hairlines */
+  --cv-border-strong:  #D2CCC8;  /* table rules, dividers */
+
+  /* --- Semantic tones --------------------------------------------------- */
+  /* Mirrors the tone vocabulary of the reference report (neutral / info /
+     warning / danger, plus good). Each tone is a fill + border + ink triple.
+     Brand orange sits in the same hue family as warning/danger by necessity —
+     the brand IS warm — so every tone ALWAYS ships with an icon and a text
+     label. Tone color never carries meaning on its own. */
+  --cv-neutral-fill: #F4F3F2;  --cv-neutral-border: #DDD8D4;  --cv-neutral-ink: #45403C;
+  --cv-info-fill:    #E8F1F8;  --cv-info-border:    #C2D9EA;  --cv-info-ink:    #14526E;
+  --cv-warning-fill: #FDF3E0;  --cv-warning-border: #F2DCAE;  --cv-warning-ink: #7A4A00;
+  --cv-danger-fill:  #FCEDE9;  --cv-danger-border:  #F5CDC2;  --cv-danger-ink:  #8C2415;
+  --cv-good-fill:    #E9F4EC;  --cv-good-border:    #C3E1CC;  --cv-good-ink:    #1B5E36;
+
+  /* --- Categorical series (validated; fixed order, never cycled) --------- */
+  --cv-series-1: #EE6925;  /* brand orange */
+  --cv-series-2: #1baf7a;  /* aqua   */
+  --cv-series-3: #2a78d6;  /* blue   */
+  --cv-series-4: #eda100;  /* yellow */
+  --cv-series-5: #e87ba4;  /* magenta*/
+  --cv-series-6: #008300;  /* green  */
+  --cv-series-7: #4a3aa7;  /* violet */
+  --cv-series-8: #e34948;  /* red    */
+
+  /* --- Ordinal ramp (validated with --ordinal) --------------------------
+     For ORDERED bands where re-ordering would change the meaning: magnitude
+     buckets, size tiers, age bands. The color carries the order, so these
+     never take categorical slots. Monotone lightness, single hue (8 deg
+     spread), light end 2.15:1 on the surface. */
+  --cv-ordinal-1: #F59B68;
+  --cv-ordinal-2: #EE6925;
+  --cv-ordinal-3: #D25A1E;
+  --cv-ordinal-4: #AE4817;
+  --cv-ordinal-5: #8A3711;
+  --cv-ordinal-6: #652608;
+
+  /* Chart chrome */
+  --cv-gridline: #ECE9E6;
+  --cv-axis:     #D2CCC8;
+
+  /* --- Type ------------------------------------------------------------- */
+  /* System stack only — reports must render with zero network requests so the
+     HTML and the PDF path look identical offline. */
+  --cv-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+             "Helvetica Neue", Arial, sans-serif;
+  --cv-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+             "Liberation Mono", monospace;
+
+  --cv-text-display: 2.25rem;  /* report title */
+  --cv-text-h2:      1.25rem;
+  --cv-text-h3:      1rem;
+  --cv-text-body:    0.9375rem;
+  --cv-text-small:   0.8125rem;
+  --cv-text-micro:   0.6875rem; /* eyebrows, captions */
+
+  /* The wordmark is uppercase and widely tracked; eyebrows and section labels
+     echo that treatment. It is the most portable piece of the identity. */
+  --cv-eyebrow-tracking: 0.14em;
+
+  /* --- Space & shape ---------------------------------------------------- */
+  --cv-space-1: 4px;   --cv-space-2: 8px;   --cv-space-3: 12px;
+  --cv-space-4: 16px;  --cv-space-5: 24px;  --cv-space-6: 32px;
+  --cv-space-7: 48px;
+  --cv-radius:   6px;
+  --cv-radius-lg: 10px;
+  --cv-measure: 980px;  /* content column — matches the reference report */
+}
+
+/* --- Dark mode -------------------------------------------------------------
+   OPT-IN ONLY. Light is the default in every context, including when the OS
+   asks for dark: a ClimateVerse report is a document, and its on-screen form
+   should match the PDF a reader prints or is sent. There is deliberately no
+   prefers-color-scheme rule here — dark applies only where a host explicitly
+   stamps data-theme="dark" (the Artifact viewer's toggle, say).
+
+   Selected, not flipped: these series steps are re-chosen for the dark band
+   (OKLCH L 0.48-0.67) and validated as a set against the dark surface. */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --cv-plane:          #0F0E0D;
+  --cv-surface:        #141514;
+  --cv-surface-sunken: #1B1C1A;
+  --cv-ink:            #FFFFFF;
+  --cv-ink-secondary:  #BDB7B2;
+  --cv-ink-muted:      #8E8781;
+  --cv-border:         #2A2926;
+  --cv-border-strong:  #3A3935;
+  --cv-brand-ink:      #FF9E6B;
+
+  --cv-neutral-fill: #232320;  --cv-neutral-border: #37362F;  --cv-neutral-ink: #D6D0CB;
+  --cv-info-fill:    #16242E;  --cv-info-border:    #244A5E;  --cv-info-ink:    #9CCBE8;
+  --cv-warning-fill: #2A2113;  --cv-warning-border: #574A2A;  --cv-warning-ink: #F2C572;
+  --cv-danger-fill:  #2B1815;  --cv-danger-border:  #57302A;  --cv-danger-ink:  #F5A896;
+  --cv-good-fill:    #14251A;  --cv-good-border:    #285238;  --cv-good-ink:    #8FD3A6;
+
+  --cv-series-1: #D95926;
+  --cv-series-2: #199e70;
+  --cv-series-3: #3987e5;
+  --cv-series-4: #c98500;
+  --cv-series-5: #d55181;
+  --cv-series-6: #008300;
+  --cv-series-7: #9085e9;
+  --cv-series-8: #e66767;
+
+  /* Dark ordinal ramp: re-stepped for the dark surface, dark end 2.30:1. */
+  --cv-ordinal-1: #FFC9A8;
+  --cv-ordinal-2: #F79A63;
+  --cv-ordinal-3: #EE6925;
+  --cv-ordinal-4: #D25A1E;
+  --cv-ordinal-5: #AE4817;
+  --cv-ordinal-6: #8A3711;
+
+  --cv-gridline: #262521;
+  --cv-axis:     #3A3935;
+}

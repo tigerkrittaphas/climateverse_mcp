@@ -1,0 +1,483 @@
+/* ==========================================================================
+   ClimateVerse report identity — components
+   --------------------------------------------------------------------------
+   A 1:1 HTML/CSS counterpart to the component vocabulary of the reference
+   report (Stat, Card/CardHeader/Pill, Callout with tone, Table with column
+   alignment and row tone, Grid, Divider). An agent filling in the report
+   template maps directly:
+
+     <Stat value label tone>       -> .cv-stat[data-tone]
+     <Card><CardHeader trailing>   -> .cv-card > .cv-card-head
+     <Pill>                        -> .cv-pill[data-tone]
+     <Callout tone title>          -> .cv-callout[data-tone]
+     <Table columnAlign rowTone>   -> .cv-table, td[data-align], tr[data-tone]
+     <Grid columns={n}>            -> .cv-grid[data-cols="n"]
+     <Text tone="secondary">       -> .cv-lead / .cv-text[data-tone]
+
+   Written entirely against tokens.css. No raw hex below this line.
+   ========================================================================== */
+
+/* --- Page shell ------------------------------------------------------------ */
+
+.cv-report {
+  font-family: var(--cv-font);
+  font-size: var(--cv-text-body);
+  line-height: 1.55;
+  color: var(--cv-ink);
+  background: var(--cv-plane);
+  margin: 0;
+  padding: var(--cv-space-6) var(--cv-space-5) var(--cv-space-7);
+  -webkit-font-smoothing: antialiased;
+}
+
+.cv-report > * { max-width: var(--cv-measure); margin-inline: auto; }
+
+/* Vertical rhythm: sections separated by a consistent gap. */
+.cv-stack   { display: flex; flex-direction: column; gap: var(--cv-space-5); }
+.cv-stack-s { display: flex; flex-direction: column; gap: var(--cv-space-3); }
+.cv-stack-xs{ display: flex; flex-direction: column; gap: var(--cv-space-2); }
+
+/* --- Masthead / cover ------------------------------------------------------ */
+
+.cv-masthead { display: flex; flex-direction: column; gap: var(--cv-space-4); }
+
+.cv-masthead-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cv-space-4);
+  flex-wrap: wrap;
+}
+
+/* align-self/flex are load-bearing: inside a flex COLUMN the default
+   `align-self: stretch` sizes the cross axis and would override `width: auto`,
+   stretching the wordmark. */
+.cv-logo {
+  height: 26px;
+  width: auto;
+  display: block;
+  align-self: flex-start;
+  flex: none;
+}
+
+/* The wordmark gradient as a structural device. This is the single strongest
+   brand signal in the report — a full-measure warm rule under the masthead. */
+.cv-rule {
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--cv-brand-gradient);
+  margin: 0;
+}
+
+.cv-eyebrow {
+  font-size: var(--cv-text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--cv-eyebrow-tracking);
+  color: var(--cv-ink-muted);
+  margin: 0;
+}
+
+.cv-eyebrow[data-tone="brand"] { color: var(--cv-brand-ink); }
+
+.cv-title {
+  font-size: var(--cv-text-display);
+  line-height: 1.15;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--cv-ink);
+  margin: 0;
+  text-wrap: balance;
+}
+
+.cv-lead {
+  font-size: var(--cv-text-body);
+  color: var(--cv-ink-secondary);
+  margin: 0;
+  max-width: 68ch;
+}
+
+/* Provenance line: DOI, date, data-basis. Monospaced so DOIs stay scannable. */
+.cv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cv-space-2) var(--cv-space-3);
+  font-family: var(--cv-font-mono);
+  font-size: var(--cv-text-small);
+  color: var(--cv-ink-muted);
+}
+.cv-meta > span { display: inline-flex; align-items: center; gap: var(--cv-space-2); }
+.cv-meta > span + span::before {
+  content: "";
+  width: 3px; height: 3px; border-radius: 50%;
+  background: var(--cv-border-strong);
+  margin-right: var(--cv-space-1);
+}
+
+/* --- Headings -------------------------------------------------------------- */
+
+.cv-h2 {
+  font-size: var(--cv-text-h2);
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  color: var(--cv-ink);
+  margin: 0;
+  padding-left: var(--cv-space-3);
+  border-left: 3px solid var(--cv-brand-orange);
+  line-height: 1.3;
+}
+
+.cv-h3 {
+  font-size: var(--cv-text-h3);
+  font-weight: 620;
+  color: var(--cv-ink);
+  margin: 0;
+}
+
+.cv-divider {
+  height: 1px; border: 0;
+  background: var(--cv-border);
+  margin: var(--cv-space-2) 0;
+}
+
+/* --- Grid ------------------------------------------------------------------ */
+
+.cv-grid { display: grid; gap: var(--cv-space-3); }
+.cv-grid[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cv-grid[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cv-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+@media (max-width: 720px) {
+  .cv-grid[data-cols="3"], .cv-grid[data-cols="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cv-grid[data-cols="2"] { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- Stat ------------------------------------------------------------------ */
+
+.cv-stat {
+  background: var(--cv-surface);
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius);
+  padding: var(--cv-space-3) var(--cv-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cv-space-1);
+  /* Tone rides a top edge, not the number's color — the value stays ink so it
+     is legible regardless of tone, per the "text wears text tokens" rule. */
+  border-top: 3px solid var(--cv-border-strong);
+}
+
+.cv-stat-value {
+  font-size: 1.75rem;
+  font-weight: 640;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--cv-ink);
+}
+
+/* Only where digits must align vertically (tables, axes) do we go tabular;
+   standalone stat values keep proportional figures. */
+.cv-stat-label {
+  font-size: var(--cv-text-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--cv-eyebrow-tracking);
+  font-weight: 600;
+  color: var(--cv-ink-muted);
+}
+
+.cv-stat[data-tone="brand"]   { border-top-color: var(--cv-brand-orange); }
+.cv-stat[data-tone="info"]    { border-top-color: var(--cv-info-ink); }
+.cv-stat[data-tone="warning"] { border-top-color: var(--cv-warning-ink); }
+.cv-stat[data-tone="danger"]  { border-top-color: var(--cv-danger-ink); }
+.cv-stat[data-tone="good"]    { border-top-color: var(--cv-good-ink); }
+
+/* --- Card ------------------------------------------------------------------ */
+
+.cv-card {
+  background: var(--cv-surface);
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cv-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cv-space-3);
+  padding: var(--cv-space-3) var(--cv-space-4);
+  border-bottom: 1px solid var(--cv-border);
+  background: var(--cv-surface-sunken);
+  font-size: var(--cv-text-small);
+  font-weight: 620;
+  color: var(--cv-ink);
+}
+
+.cv-card-body {
+  padding: var(--cv-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cv-space-2);
+}
+
+/* --- Pill ------------------------------------------------------------------ */
+
+.cv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cv-space-1);
+  padding: 2px var(--cv-space-2);
+  border-radius: 999px;
+  font-size: var(--cv-text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  background: var(--cv-neutral-fill);
+  border: 1px solid var(--cv-neutral-border);
+  color: var(--cv-neutral-ink);
+}
+
+.cv-pill[data-tone="brand"]   { background: var(--cv-danger-fill);  border-color: var(--cv-danger-border);  color: var(--cv-brand-ink); }
+.cv-pill[data-tone="info"]    { background: var(--cv-info-fill);    border-color: var(--cv-info-border);    color: var(--cv-info-ink); }
+.cv-pill[data-tone="warning"] { background: var(--cv-warning-fill); border-color: var(--cv-warning-border); color: var(--cv-warning-ink); }
+.cv-pill[data-tone="danger"]  { background: var(--cv-danger-fill);  border-color: var(--cv-danger-border);  color: var(--cv-danger-ink); }
+.cv-pill[data-tone="good"]    { background: var(--cv-good-fill);    border-color: var(--cv-good-border);    color: var(--cv-good-ink); }
+
+/* --- Callout ---------------------------------------------------------------
+   The provenance workhorse of a ClimateVerse report. The server's own ground
+   rules require every claim to declare whether it rests on full data or a
+   bounded sample — that disclosure lives here, and it is why the icon and the
+   title are mandatory rather than optional. */
+
+.cv-callout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--cv-space-1) var(--cv-space-3);
+  padding: var(--cv-space-3) var(--cv-space-4);
+  border: 1px solid var(--cv-neutral-border);
+  border-left-width: 3px;
+  border-radius: var(--cv-radius);
+  background: var(--cv-neutral-fill);
+  color: var(--cv-neutral-ink);
+}
+
+.cv-callout-icon {
+  grid-row: 1 / span 2;
+  width: 1.05rem; height: 1.05rem;
+  margin-top: 2px;
+  flex: none;
+}
+.cv-callout-icon svg { width: 100%; height: 100%; display: block; }
+
+.cv-callout-title {
+  font-weight: 650;
+  font-size: var(--cv-text-small);
+  line-height: 1.4;
+}
+
+.cv-callout-body {
+  font-size: var(--cv-text-small);
+  line-height: 1.55;
+}
+.cv-callout-body :first-child { margin-top: 0; }
+.cv-callout-body :last-child  { margin-bottom: 0; }
+
+.cv-callout[data-tone="info"]    { background: var(--cv-info-fill);    border-color: var(--cv-info-border);    color: var(--cv-info-ink); }
+.cv-callout[data-tone="warning"] { background: var(--cv-warning-fill); border-color: var(--cv-warning-border); color: var(--cv-warning-ink); }
+.cv-callout[data-tone="danger"]  { background: var(--cv-danger-fill);  border-color: var(--cv-danger-border);  color: var(--cv-danger-ink); }
+.cv-callout[data-tone="good"]    { background: var(--cv-good-fill);    border-color: var(--cv-good-border);    color: var(--cv-good-ink); }
+
+/* --- Table ----------------------------------------------------------------- */
+
+.cv-table-wrap { overflow-x: auto; }
+
+.cv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--cv-text-small);
+  background: var(--cv-surface);
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius);
+}
+
+.cv-table th {
+  text-align: left;
+  font-weight: 620;
+  font-size: var(--cv-text-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cv-ink-muted);
+  background: var(--cv-surface-sunken);
+  padding: var(--cv-space-2) var(--cv-space-3);
+  border-bottom: 1px solid var(--cv-border-strong);
+  white-space: nowrap;
+}
+
+.cv-table td {
+  padding: var(--cv-space-2) var(--cv-space-3);
+  border-bottom: 1px solid var(--cv-border);
+  color: var(--cv-ink);
+  /* Columns must align vertically — this is exactly where tabular figures earn
+     their keep. */
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-table tr:last-child td { border-bottom: 0; }
+
+.cv-table [data-align="right"]  { text-align: right; }
+.cv-table [data-align="center"] { text-align: center; }
+
+/* Row tone is a left edge + a wash: never the only signal, since the row's own
+   content carries the meaning. */
+.cv-table tbody tr[data-tone] td:first-child { box-shadow: inset 3px 0 0 0 var(--cv-border-strong); }
+.cv-table tbody tr[data-tone="brand"]   { background: color-mix(in srgb, var(--cv-danger-fill) 55%, transparent); }
+.cv-table tbody tr[data-tone="brand"]   td:first-child { box-shadow: inset 3px 0 0 0 var(--cv-brand-orange); }
+.cv-table tbody tr[data-tone="warning"] { background: color-mix(in srgb, var(--cv-warning-fill) 60%, transparent); }
+.cv-table tbody tr[data-tone="warning"] td:first-child { box-shadow: inset 3px 0 0 0 var(--cv-warning-ink); }
+.cv-table tbody tr[data-tone="info"]    { background: color-mix(in srgb, var(--cv-info-fill) 60%, transparent); }
+.cv-table tbody tr[data-tone="info"]    td:first-child { box-shadow: inset 3px 0 0 0 var(--cv-info-ink); }
+
+/* --- Caption / source note ------------------------------------------------- */
+
+.cv-caption {
+  font-size: var(--cv-text-small);
+  color: var(--cv-ink-muted);
+  margin: 0;
+}
+
+.cv-text[data-tone="secondary"] { color: var(--cv-ink-secondary); }
+.cv-text[data-tone="muted"]     { color: var(--cv-ink-muted); }
+
+/* --- Figure ---------------------------------------------------------------- */
+
+.cv-figure { margin: 0; display: flex; flex-direction: column; gap: var(--cv-space-3); }
+.cv-figure > figcaption { font-size: var(--cv-text-small); color: var(--cv-ink-muted); }
+
+/* --- Bar chart --------------------------------------------------------------
+   Built from divs rather than SVG on purpose: it reflows at any width, prints
+   without a rasteriser, needs no library, and puts the value label in real text
+   that a screen reader can reach.
+
+   Marks are thin with the data-end rounded and the baseline end square, so the
+   bar visibly grows from its axis. One series takes slot 1 and needs no legend —
+   the figure title names it. Values are direct-labelled, which is also the
+   relief channel for the slots that sit below 3:1 on a light surface. */
+
+.cv-bars {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr minmax(3.5rem, auto);
+  align-items: center;
+  gap: 6px var(--cv-space-3);  /* >=2px surface gap between adjacent bars */
+  font-size: var(--cv-text-small);
+}
+
+.cv-bar-label {
+  color: var(--cv-ink-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cv-bar-track {
+  position: relative;
+  height: 14px;
+  background: var(--cv-gridline);
+  border-radius: 0 2px 2px 0;
+}
+
+.cv-bar-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--cv-series-1);
+  border-radius: 0 4px 4px 0;   /* rounded data-end, square at the baseline */
+}
+
+.cv-bar-fill[data-series="2"] { background: var(--cv-series-2); }
+.cv-bar-fill[data-series="3"] { background: var(--cv-series-3); }
+.cv-bar-fill[data-series="4"] { background: var(--cv-series-4); }
+
+/* Ordinal bands. Use these — NOT the categorical slots — whenever re-ordering
+   the categories would change their meaning (magnitude buckets, size tiers, age
+   bands). The one-hue ramp puts the order into the color itself. */
+.cv-bar-fill[data-ordinal="1"] { background: var(--cv-ordinal-1); }
+.cv-bar-fill[data-ordinal="2"] { background: var(--cv-ordinal-2); }
+.cv-bar-fill[data-ordinal="3"] { background: var(--cv-ordinal-3); }
+.cv-bar-fill[data-ordinal="4"] { background: var(--cv-ordinal-4); }
+.cv-bar-fill[data-ordinal="5"] { background: var(--cv-ordinal-5); }
+.cv-bar-fill[data-ordinal="6"] { background: var(--cv-ordinal-6); }
+
+/* Values stay in ink, never the series color — the bar beside them carries
+   identity. Tabular so the column aligns. */
+.cv-bar-value {
+  color: var(--cv-ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* --- Legend (charts) --------------------------------------------------------
+   A legend is present for every chart with 2+ series; identity is never carried
+   by color alone. Swatch beside text-token ink. */
+
+.cv-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cv-space-2) var(--cv-space-4);
+  font-size: var(--cv-text-small);
+  color: var(--cv-ink-secondary);
+}
+.cv-legend-item { display: inline-flex; align-items: center; gap: var(--cv-space-2); }
+.cv-legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+/* --- Footer ---------------------------------------------------------------- */
+
+.cv-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--cv-space-4);
+  flex-wrap: wrap;
+  padding-top: var(--cv-space-3);
+  border-top: 1px solid var(--cv-border);
+  font-size: var(--cv-text-micro);
+  color: var(--cv-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--cv-eyebrow-tracking);
+}
+
+/* --- Print / PDF -----------------------------------------------------------
+   The eda() tool asks for HTML *and* PDF, so the print path is part of the
+   identity rather than an afterthought. Forced light, no page-break orphans. */
+
+@page { margin: 16mm 14mm; }
+
+@media print {
+  :root {
+    color-scheme: light;
+    --cv-plane: #FFFFFF;
+  }
+  .cv-report { padding: 0; background: #FFFFFF; }
+  .cv-report > * { max-width: none; }
+
+  /* Tone fills and the brand rule must survive the print pipeline. */
+  .cv-rule, .cv-callout, .cv-pill, .cv-stat, .cv-table th,
+  .cv-table tbody tr[data-tone] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .cv-card, .cv-callout, .cv-stat, figure { break-inside: avoid; }
+  .cv-h2, .cv-h3 { break-after: avoid; }
+  .cv-table { break-inside: auto; }
+  .cv-table thead { display: table-header-group; }
+  .cv-table tr { break-inside: avoid; }
+
+  a { color: inherit; text-decoration: none; }
+  /* URLs are lost on paper unless spelled out. */
+  .cv-print-url a::after { content: " (" attr(href) ")"; color: var(--cv-ink-muted); }
+}

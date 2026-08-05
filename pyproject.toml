@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp>=3.4.4",
+    "pydantic>=2.0",
 ]
 
 [project.scripts]
@@ -23,6 +24,16 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/climateverse_mcp"]
+# brand/tokens.css, brand/components.css and brand/logo.data-uri.txt are read at
+# runtime by report.py, so they must ship in the wheel. The design-system
+# authoring files next to them (specimen source, build script, rendered preview)
+# are development-only.
+exclude = [
+    "src/climateverse_mcp/brand/parts",
+    "src/climateverse_mcp/brand/dist",
+    "src/climateverse_mcp/brand/build.py",
+    "src/climateverse_mcp/brand/logo.png",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,20 +1,28 @@
 """ClimateVerse MCP server."""
 
-import sys
-
-from fastmcp import FastMCP
-from fastmcp.exceptions import ToolError
-
 import asyncio
 import ipaddress
 import json
 import re
 import socket
+import sys
+from pathlib import Path
 
 import httpx
+from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
+from pydantic import BaseModel, Field
 
 from .api import api_client
-from .instruction import EDA_INSTRUCTIONS, INSTRUCTIONS
+from .instruction import (
+    AGENT_TOOLING,
+    EDA_INSTRUCTIONS,
+    INSTRUCTIONS,
+    REPORT_TEMPLATE,
+    RESEARCH_INSTRUCTIONS,
+    RESEARCH_REPORT_STRUCTURE,
+)
+from .report import render_report as render_report_html
 from .settings import get_settings
 
 mcp = FastMCP(
@@ -85,6 +93,111 @@ async def list_datasets(limit: int = 100) -> dict:
 async def search_datasets(query: str, limit: int = 10) -> dict:
     """Search the ClimateVerse catalog for datasets matching a query."""
     return await _search(query, limit)
+
+
+class ResearchClarification(BaseModel):
+    """User-supplied scope for an exploratory climate-data question."""
+
+    research_goal: str = Field(
+        description=(
+            "The question to answer or pattern, comparison, or decision to explore"
+        )
+    )
+    geography: str = Field(
+        description="Place and geographic level, such as country, state, or district"
+    )
+    time_period: str = Field(
+        description=(
+            "Years and relevant season or months; enter 'not sure' if exploratory"
+        )
+    )
+    indicator_definition: str = Field(
+        description=(
+            "How the main outcome or exposure should be measured, including any "
+            "threshold; enter 'compare definitions' if undecided"
+        )
+    )
+    comparison_or_baseline: str = Field(
+        default="No specific comparison or baseline",
+        description="Groups, periods, places, or baseline to compare",
+    )
+    audience: str = Field(
+        default="People and researchers new to the topic",
+        description="Who will read the analysis and their level of subject knowledge",
+    )
+    intended_use: str = Field(
+        default=(
+            "Internal exploratory working note; encourage further analysis; "
+            "not for publication"
+        ),
+        description="How the report will be used and whether it may be published",
+    )
+
+
+def _format_research_clarification(
+    question: str, clarification: ResearchClarification
+) -> dict:
+    """Turn elicited fields into a portable brief for subsequent tool calls."""
+    context = clarification.model_dump()
+    lines = [
+        f"Original request: {question.strip()}",
+        f"Research goal: {clarification.research_goal.strip()}",
+        f"Geography: {clarification.geography.strip()}",
+        f"Time period / season: {clarification.time_period.strip()}",
+        f"Indicator definition: {clarification.indicator_definition.strip()}",
+        f"Comparison / baseline: {clarification.comparison_or_baseline.strip()}",
+        f"Audience: {clarification.audience.strip()}",
+        f"Intended use: {clarification.intended_use.strip()}",
+    ]
+    return {
+        "status": "clarified",
+        "original_question": question.strip(),
+        "context": context,
+        "research_brief": "\n".join(lines),
+        "next_step": (
+            "Use research_brief as the question passed to research(), and preserve "
+            "these scope choices in the analysis and report."
+        ),
+    }
+
+
+@mcp.tool
+async def clarify_research_question(question: str, ctx: Context) -> dict:
+    """Ask the user for missing scope before climate-data research begins.
+
+    Call this BEFORE research() when a request leaves any consequential choice
+    unclear: the research goal, geography or geographic level, years/season,
+    indicator definition or threshold, comparison/baseline, audience, or
+    intended use. Do not silently choose these on the user's behalf.
+
+    The client must support MCP elicitation. The user may enter "not sure" or
+    "compare definitions" when exploration, rather than a fixed choice, is the
+    goal. The returned research_brief can be passed directly to research().
+    """
+    if not question.strip():
+        raise ToolError("A research question or topic is required.")
+
+    result = await ctx.elicit(
+        (
+            "Before searching the ClimateVerse catalog, please clarify the scope "
+            "of this exploratory request. It is fine to answer 'not sure' where "
+            "you want the analysis to compare reasonable options.\n\n"
+            f"Current request: {question.strip()}"
+        ),
+        response_type=ResearchClarification,
+    )
+    if result.action != "accept":
+        return {
+            "status": result.action,
+            "original_question": question.strip(),
+            "message": (
+                "Clarification was not provided. Do not guess consequential scope; "
+                "ask the user in the conversation or limit the work to catalog "
+                "discovery without analysis."
+            ),
+        }
+
+    return _format_research_clarification(question, result.data)
 
 
 def _normalize_doi(doi: str) -> str:
@@ -340,11 +453,12 @@ async def eda(doi: str) -> str:
     """Get a self-contained EDA task briefing for a dataset.
 
     Returns instructions for YOU (the calling agent) to perform exploratory
-    data analysis client-side, bundled with the dataset's metadata and its
-    codebook. Follow the briefing: acquire the data with your own tools, parse
-    it per the codebook, and produce a short report with 2-3 visualizations.
+    data analysis client-side, bundled with the dataset's metadata, its
+    codebook, and the ClimateVerse report template contract.
 
-    The final report should be in html and pdf.
+    Deliver the finished report by calling render_report(), which writes a
+    self-contained, branded HTML file. It carries print styles, so exporting
+    that file to PDF from a browser reproduces the same layout.
     """
     codebook = await _fetch_codebook(doi)
     metadata = await _fetch_dataset_meta(doi)
@@ -353,7 +467,145 @@ async def eda(doi: str) -> str:
         doi=metadata.get("doi") or _normalize_doi(doi),
         metadata=json.dumps(metadata, ensure_ascii=False, indent=2),
         codebook=codebook,
+        tooling=AGENT_TOOLING,
+        template=REPORT_TEMPLATE,
     )
+
+
+#: Codebooks are comprehensive and can run to tens of thousands of tokens each.
+#: Bundling several blindly would swamp the caller's context before any analysis
+#: starts, so `research` bundles only DOIs the caller explicitly named, capped.
+MAX_BUNDLED_CODEBOOKS = 3
+#: How many search hits to seed the briefing with.
+RESEARCH_CANDIDATES = 8
+
+
+def _format_candidates(datasets: list[dict]) -> str:
+    """Render search hits as a compact list — titles and DOIs, not codebooks."""
+    if not datasets:
+        return (
+            "_No datasets matched this phrasing._ That is a result about the "
+            "query, not about the catalog: re-run search_datasets with "
+            "synonyms, indicator names, or the publishing agency's name before "
+            "concluding the data does not exist."
+        )
+    lines = []
+    for item in datasets:
+        title = item.get("title") or "untitled"
+        description = (item.get("description") or "").strip().replace("\n", " ")
+        if len(description) > 220:
+            description = description[:217] + "..."
+        lines.append(f"- **{title}** — `{item.get('doi')}`")
+        if description:
+            lines.append(f"  {description}")
+    return "\n".join(lines)
+
+
+async def _bundle_source(doi: str) -> str:
+    """Fetch one dataset's metadata + codebook for inclusion in a briefing."""
+    try:
+        metadata = await _fetch_dataset_meta(doi)
+        codebook = await _fetch_codebook(doi)
+    except ToolError as exc:
+        # One bad DOI must not sink the whole briefing — report it in place so
+        # the agent can see which source is unavailable and carry on.
+        return f"### {doi}\n\n_Could not be bundled: {exc}_\n"
+    return (
+        f"### {metadata.get('title') or 'untitled'} ({metadata.get('doi') or doi})\n\n"
+        f"```json\n{json.dumps(metadata, ensure_ascii=False, indent=2)}\n```\n\n"
+        f"#### Codebook\n\n{codebook}\n"
+    )
+
+
+@mcp.tool
+async def research(question: str, dois: list[str] | None = None) -> str:
+    """Get a task briefing for answering a RESEARCH QUESTION from the catalog.
+
+    Call this when the user asks a question of the data rather than about one
+    dataset — anything that may need several datasets, a join, or filtering.
+    Use eda(doi) instead when the task is profiling a single known dataset.
+
+    Returns instructions for YOU to execute: how to turn the question into data
+    requirements, find and verify candidate datasets, decide whether they can
+    legitimately be combined, audit every join and filter, and deliver the
+    answer through render_report(). Candidate datasets matching the question are
+    included so you can start from real DOIs rather than guesses.
+
+    Pass `dois` once you know which datasets you need and their full metadata
+    and codebooks will be bundled in (up to 3 — codebooks are large). Leave it
+    empty on the first call: you will get the briefing plus candidates, then
+    pull codebooks selectively with get_codebook(doi).
+    """
+    if not question.strip():
+        raise ToolError("A research question is required.")
+
+    found = await _search(question, RESEARCH_CANDIDATES)
+
+    sources = ""
+    if dois:
+        selected = dois[:MAX_BUNDLED_CODEBOOKS]
+        bundles = await asyncio.gather(*(_bundle_source(d) for d in selected))
+        omitted = ""
+        if len(dois) > len(selected):
+            skipped = ", ".join(dois[MAX_BUNDLED_CODEBOOKS:])
+            omitted = (
+                f"\n_Not bundled (limit {MAX_BUNDLED_CODEBOOKS}): {skipped}. "
+                f"Pull these with get_codebook(doi) as you need them._\n"
+            )
+        sources = "\n## Bundled sources\n\n" + "\n".join(bundles) + omitted
+
+    return RESEARCH_INSTRUCTIONS.format(
+        question=question.strip(),
+        tooling=AGENT_TOOLING,
+        structure=RESEARCH_REPORT_STRUCTURE,
+        template=REPORT_TEMPLATE,
+        candidates=_format_candidates(found.get("datasets") or []),
+        sources=sources,
+    )
+
+
+@mcp.tool
+def render_report(
+    out_path: str,
+    title: str,
+    body_html: str,
+    lead: str = "",
+    doi: str = "",
+    meta: list[str] | None = None,
+) -> dict:
+    """Wrap your report content in the branded ClimateVerse shell and write it.
+
+    THE way to deliver a report from this server — do not hand-roll your own
+    HTML page, and do not write your own CSS. This supplies the logo, masthead,
+    brand rule, footer, colour system, chart palette and print styles, so every
+    report from this catalog looks like it came from the same publisher.
+
+    Write ONLY body content in `body_html`, using the `cv-*` classes listed in
+    the eda() briefing. No <style>, no <script>, no external URLs — embed any
+    figures as data: URIs so the file stays self-contained and prints correctly.
+
+    `out_path` is where the .html file is written. Returns the path and byte
+    count plus any warnings; the document itself is not returned, since a
+    finished report is far too large to be useful in your context.
+    """
+    document, warnings = render_report_html(
+        title=title, body_html=body_html, lead=lead, doi=doi, meta=meta
+    )
+
+    destination = Path(out_path).expanduser()
+    if destination.suffix.lower() not in (".html", ".htm"):
+        raise ToolError(f"out_path must end in .html, got: {out_path}")
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(document, encoding="utf-8")
+    except OSError as exc:
+        raise ToolError(f"Could not write {destination}: {exc}") from exc
+
+    return {
+        "path": str(destination),
+        "bytes": len(document.encode("utf-8")),
+        "warnings": warnings,
+    }
 
 
 @mcp.resource("resource://about")

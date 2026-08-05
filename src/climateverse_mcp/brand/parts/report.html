@@ -1,0 +1,290 @@
+<!-- @dsCard group="Report" -->
+<title>ClimateVerse — EDA report template</title>
+<div class="cv-specimen cv-report">
+  <article class="cv-stack">
+
+    <!-- ===================================================================
+         MASTHEAD — logo, gradient rule, title, lead, provenance line.
+         The provenance line is not optional chrome: the server's ground rules
+         require every report to declare its data basis up front.
+         =================================================================== -->
+    <header class="cv-masthead">
+      <div class="cv-masthead-bar">
+        <img class="cv-logo" src="{{LOGO}}" alt="ClimateVerse" />
+        <p class="cv-eyebrow">Exploratory Data Analysis</p>
+      </div>
+      <hr class="cv-rule" />
+      <div class="cv-stack-xs">
+        <h1 class="cv-title">IMD Disastrous Heat Wave Days</h1>
+        <p class="cv-lead">
+          District counts of heat-wave days that caused at least one human death,
+          1969&ndash;2019. Figures were extracted from the Hazard Atlas qgis2web layer
+          files; the catalog holds no tabular release of this product.
+        </p>
+      </div>
+      <div class="cv-meta">
+        <span>doi:10.71646/K9ZHZ7</span>
+        <span>2026-07-27</span>
+        <span>642 districts</span>
+        <span>bounded sample</span>
+      </div>
+    </header>
+
+    <!-- Data-basis disclosure. Sits above the findings, never buried at the end. -->
+    <div class="cv-callout" data-tone="warning">
+      <span class="cv-callout-icon"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1.9c.5 0 1 .3 1.2.7l7.1 12.7c.5.9-.1 2-1.2 2H2.9c-1.1 0-1.7-1.1-1.2-2L8.8 2.6c.2-.4.7-.7 1.2-.7zm-.9 5v4.8h1.8V6.9H9.1zm0 6.1v1.8h1.8V13H9.1z"/></svg></span>
+      <div class="cv-callout-title">What &ldquo;disastrous&rdquo; means here</div>
+      <div class="cv-callout-body">
+        Each mapped day is a heat-wave day meeting IMD criteria <em>and</em> linked to at
+        least one human death &mdash; not a count of all meteorological heat-wave days.
+        Annual district totals are cumulative over 1969&ndash;2019, not an annual average.
+        Joining this to a meteorological frequency series without accounting for that
+        conditioning will mislead.
+      </div>
+    </div>
+
+    <!-- ===================================================================
+         HEADLINE FIGURES
+         =================================================================== -->
+    <div class="cv-grid" data-cols="4">
+      <div class="cv-stat">
+        <span class="cv-stat-value">642</span>
+        <span class="cv-stat-label">Districts on annual map</span>
+      </div>
+      <div class="cv-stat" data-tone="brand">
+        <span class="cv-stat-value">85,446</span>
+        <span class="cv-stat-label">Sum of district-days</span>
+      </div>
+      <div class="cv-stat" data-tone="warning">
+        <span class="cv-stat-value">1,113</span>
+        <span class="cv-stat-label">Peak &middot; Vizianagaram</span>
+      </div>
+      <div class="cv-stat" data-tone="info">
+        <span class="cv-stat-value">May</span>
+        <span class="cv-stat-label">Heaviest month</span>
+      </div>
+    </div>
+
+    <!-- ===================================================================
+         EVIDENCE — the recurring ClimateVerse move: what the catalog claims
+         beside what was actually verified, each tagged with its trust tier.
+         =================================================================== -->
+    <section class="cv-stack-s">
+      <h2 class="cv-h2">What the catalog holds vs. what we recovered</h2>
+      <div class="cv-grid" data-cols="2">
+        <div class="cv-card">
+          <div class="cv-card-head">
+            Enrichment status
+            <span class="cv-pill">catalog</span>
+          </div>
+          <div class="cv-card-body">
+            <p class="cv-text" data-tone="secondary" style="margin:0;font-size:var(--cv-text-small)">
+              33 nodes scraped from the Hazard Atlas site: mostly HTML chrome, nav links
+              and About pages. The interactive Days and NVI layers were marked
+              metadata-only, with no tabular sample stored.
+            </p>
+            <p class="cv-caption">needs_review &middot; score 0.67 &middot; 11/33 nodes failed sampling</p>
+          </div>
+        </div>
+        <div class="cv-card">
+          <div class="cv-card-head">
+            Actual data source
+            <span class="cv-pill" data-tone="good">sample-verified</span>
+          </div>
+          <div class="cv-card-body">
+            <p class="cv-text" data-tone="secondary" style="margin:0;font-size:var(--cv-text-small)">
+              Each map page loads OpenLayers with GeoJSON-in-JS layers &mdash; for example
+              <code>NumberofHeatWaveDays_1.js</code>, carrying STATE, DISTRICT and a
+              heat-wave-day count per feature.
+            </p>
+            <p class="cv-caption">Confirmed via fetch_sample &middot; 64 KiB of 210 MB</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="cv-divider" />
+
+    <!-- ===================================================================
+         FIGURES — one series each, so slot 1 throughout and no legend box;
+         each figure's title names its series. Values are direct-labelled.
+         =================================================================== -->
+    <section class="cv-stack-s">
+      <h2 class="cv-h2">Where fatal heat-wave days concentrate</h2>
+      <p class="cv-lead">
+        Two rankings matter and they disagree. Andhra Pradesh dominates the most extreme
+        individual districts; Rajasthan leads on statewide summed district-days.
+      </p>
+
+      <div class="cv-grid" data-cols="2">
+        <div class="cv-card">
+          <div class="cv-card-head">Top states by summed district-days</div>
+          <div class="cv-card-body">
+            <figure class="cv-figure">
+              <div class="cv-bars">
+                <span class="cv-bar-label">Rajasthan</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" style="width:100%"></span></span>
+                <span class="cv-bar-value">19,074</span>
+
+                <span class="cv-bar-label">Andhra Pradesh</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" style="width:68.9%"></span></span>
+                <span class="cv-bar-value">13,135</span>
+
+                <span class="cv-bar-label">Odisha</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" style="width:67.7%"></span></span>
+                <span class="cv-bar-value">12,921</span>
+
+                <span class="cv-bar-label">Uttar Pradesh</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" style="width:35.3%"></span></span>
+                <span class="cv-bar-value">6,726</span>
+
+                <span class="cv-bar-label">Madhya Pradesh</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" style="width:34.1%"></span></span>
+                <span class="cv-bar-value">6,500</span>
+
+                <span class="cv-bar-label">Telangana</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" style="width:30.6%"></span></span>
+                <span class="cv-bar-value">5,828</span>
+
+                <span class="cv-bar-label">Bihar</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" style="width:24.1%"></span></span>
+                <span class="cv-bar-value">4,605</span>
+
+                <span class="cv-bar-label">Punjab</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" style="width:18.9%"></span></span>
+                <span class="cv-bar-value">3,602</span>
+              </div>
+              <figcaption>
+                Annual NumberofHeatWaveDays layer, district-day sums 1969&ndash;2019.
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <div class="cv-card">
+          <div class="cv-card-head">District-day distribution (annual)</div>
+          <div class="cv-card-body">
+            <figure class="cv-figure">
+              <div class="cv-bars">
+                <span class="cv-bar-label">1&ndash;9</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" data-ordinal="1" style="width:46.0%"></span></span>
+                <span class="cv-bar-value">80</span>
+
+                <span class="cv-bar-label">10&ndash;49</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" data-ordinal="2" style="width:100%"></span></span>
+                <span class="cv-bar-value">174</span>
+
+                <span class="cv-bar-label">50&ndash;99</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" data-ordinal="3" style="width:84.5%"></span></span>
+                <span class="cv-bar-value">147</span>
+
+                <span class="cv-bar-label">100&ndash;199</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" data-ordinal="4" style="width:83.3%"></span></span>
+                <span class="cv-bar-value">145</span>
+
+                <span class="cv-bar-label">200&ndash;399</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" data-ordinal="5" style="width:16.1%"></span></span>
+                <span class="cv-bar-value">28</span>
+
+                <span class="cv-bar-label">400&ndash;1113</span>
+                <span class="cv-bar-track"><span class="cv-bar-fill" data-ordinal="6" style="width:39.1%"></span></span>
+                <span class="cv-bar-value">68</span>
+              </div>
+              <figcaption>
+                642 districts with at least one fatal heat-wave day &middot; mean 133 days.
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+
+      <!-- Table: numeric columns right-aligned and tabular; row tone marks the
+           pattern the prose calls out, with a left edge so it survives print. -->
+      <div class="cv-table-wrap">
+        <table class="cv-table">
+          <thead>
+            <tr>
+              <th data-align="right">Rank</th>
+              <th>District</th>
+              <th>State</th>
+              <th data-align="right">Days 1969&ndash;2019</th>
+              <th data-align="right">Annual NVI</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr data-tone="brand"><td data-align="right">1</td><td>Vizianagaram</td><td>Andhra Pradesh</td><td data-align="right">1,113</td><td data-align="right">1.00</td></tr>
+            <tr data-tone="brand"><td data-align="right">2</td><td>West Godavari</td><td>Andhra Pradesh</td><td data-align="right">1,112</td><td data-align="right">1.00</td></tr>
+            <tr data-tone="brand"><td data-align="right">3</td><td>Visakhapatnam</td><td>Andhra Pradesh</td><td data-align="right">1,085</td><td data-align="right">0.97</td></tr>
+            <tr data-tone="brand"><td data-align="right">4</td><td>Krishna</td><td>Andhra Pradesh</td><td data-align="right">1,067</td><td data-align="right">0.96</td></tr>
+            <tr><td data-align="right">11</td><td>Churu</td><td>Rajasthan</td><td data-align="right">935</td><td data-align="right">0.84</td></tr>
+            <tr><td data-align="right">15</td><td>Bundi</td><td>Rajasthan</td><td data-align="right">732</td><td data-align="right">0.66</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cv-caption">
+        Top 10 are all Andhra Pradesh coastal and Rayalaseema districts; Churu is the
+        first non-AP entry, at rank 11.
+      </p>
+    </section>
+
+    <hr class="cv-divider" />
+
+    <!-- ===================================================================
+         FINDINGS THAT CHANGE HOW THE DATA MAY BE USED
+         =================================================================== -->
+    <section class="cv-stack-s">
+      <h2 class="cv-h2">Semantics that would mislead a join</h2>
+
+      <div class="cv-callout" data-tone="info">
+        <span class="cv-callout-icon"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1.6a8.4 8.4 0 100 16.8 8.4 8.4 0 000-16.8zm.9 12.9H9.1V8.8h1.8v5.7zm0-7.5H9.1V5.2h1.8v1.8z"/></svg></span>
+        <div class="cv-callout-title">Annual is not April + May + June + July</div>
+        <div class="cv-callout-body">
+          For Vizianagaram the annual layer reads 1,113 while the four monthly layers sum
+          to roughly 832. The annual map is its own product with its own event accounting.
+          Do not reconstruct the annual figure by adding months.
+        </div>
+      </div>
+
+      <div class="cv-callout" data-tone="danger">
+        <span class="cv-callout-icon"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1.6a8.4 8.4 0 100 16.8 8.4 8.4 0 000-16.8zm3 11.1l-1.2 1.2L10 11.9l-1.8 1.9-1.2-1.2L8.8 10.7 6.9 8.9l1.2-1.2L10 9.5l1.8-1.8 1.2 1.2-1.9 1.8 1.9 1.8z"/></svg></span>
+        <div class="cv-callout-title">Codebook and file disagree</div>
+        <div class="cv-callout-body">
+          The codebook documents a CSV release, but the sampled URL returns GeoJSON
+          embedded in JavaScript. The parsing recipe will not run as written. Findings
+          drawn from it are unverified until the recipe is corrected.
+        </div>
+      </div>
+    </section>
+
+    <!-- Evidence tiers, stated inline so a reader can grade any claim above. -->
+    <section class="cv-stack-s">
+      <h3 class="cv-h3">Evidence tiers used in this report</h3>
+      <div class="cv-legend">
+        <span class="cv-pill" data-tone="good">sample-verified</span>
+        <span class="cv-pill" data-tone="info">codebook-documented</span>
+        <span class="cv-pill">title only</span>
+        <span class="cv-pill" data-tone="warning">truncated</span>
+        <span class="cv-pill" data-tone="danger">unverified</span>
+      </div>
+    </section>
+
+    <!-- Caveats close the report. Neutral tone: limitations, not alarms. -->
+    <div class="cv-callout" data-tone="neutral">
+      <span class="cv-callout-icon"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5 2.4h6.4L16 7v10.6H5V2.4zm5.8 1.5v3.4h3.4l-3.4-3.4z"/></svg></span>
+      <div class="cv-callout-title">Caveats &amp; limitations</div>
+      <div class="cv-callout-body">
+        Layers omit districts with zero days, so feature counts vary by month. Death
+        attribution follows media and report compilations and may undercount. Catalog
+        enrichment did not parse these JS layers; the statistics here come from a direct
+        fetch of the public atlas files. Figures rest on bounded samples retrieved through
+        <code>fetch_sample</code>, not on a complete download.
+      </div>
+    </div>
+
+    <footer class="cv-footer">
+      <span>ClimateVerse &middot; doi:10.71646/K9ZHZ7</span>
+      <span>Generated 2026-07-27</span>
+    </footer>
+
+  </article>
+</div>
