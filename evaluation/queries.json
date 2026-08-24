@@ -1,0 +1,74 @@
+[
+  {
+    "id": "q1",
+    "category": "dataset discovery",
+    "prompt": "Find the best Climateverse datasets for studying flood vulnerability in India. Rank the top five, explain what each contains, and cite its DOI.",
+    "review_questions": [
+      "Are the five datasets relevant and correctly ranked?",
+      "Does every recommendation have a supported DOI and rationale?"
+    ]
+  },
+  {
+    "id": "q2",
+    "category": "bounded discovery",
+    "prompt": "Use only `search_datasets`. Find datasets related to drought and agricultural vulnerability in India. Make at most two searches, deduplicate the results, and rank the top five by relevance with DOI and rationale.",
+    "review_questions": [
+      "Did the agent stay within two searches and use no other tools?",
+      "Are duplicate datasets removed and rankings evidence-based?"
+    ]
+  },
+  {
+    "id": "q3",
+    "category": "dataset metadata",
+    "prompt": "Use only `describe_dataset` to inspect `doi:10.71646/K9ZHZ7`. Report its title, description, authors, subjects, time coverage, license, publication state, and available files. Do not infer missing information.",
+    "review_questions": [
+      "Did the agent use only describe_dataset?",
+      "Are missing fields identified without invention?"
+    ]
+  },
+  {
+    "id": "q4",
+    "category": "codebook access",
+    "prompt": "Use only `get_codebook` for `doi:10.71646/K9ZHZ7`. Summarize its variables, data URLs, formats, parsing instructions, and caveats. If unavailable, return the exact error and stop.",
+    "review_questions": [
+      "Did the agent stop after an unavailable codebook?",
+      "Is the reported error faithful to the tool result?"
+    ]
+  },
+  {
+    "id": "q5",
+    "category": "ambiguous research",
+    "prompt": "Analyze climate vulnerability in India.",
+    "review_questions": [
+      "Did the agent ask for consequential missing scope?",
+      "Did it avoid inventing geography, period, indicators, or comparison?"
+    ]
+  },
+  {
+    "id": "q6",
+    "category": "cross-dataset comparison",
+    "prompt": "Compare heat exposure and climate vulnerability across Indian states using Climateverse datasets. First identify no more than three datasets. Verify whether their geography, years, units, and definitions are compatible before attempting any comparison. Do not continue if codebooks or data are unavailable.",
+    "review_questions": [
+      "Did the agent inspect no more than three candidates?",
+      "Did it stop when compatibility or source access could not be verified?"
+    ]
+  },
+  {
+    "id": "q7",
+    "category": "single-dataset analysis",
+    "prompt": "Perform an exploratory analysis of `doi:10.71646/K9ZHZ7`. Retrieve its codebook, verify a sample before downloading anything, calculate all statistics with code, create useful charts, and produce a Climateverse report. Stop if the codebook or source data cannot be accessed.",
+    "review_questions": [
+      "Did the agent respect the codebook and sample gates?",
+      "If analysis ran, were statistics computed in code and limitations disclosed?"
+    ]
+  },
+  {
+    "id": "q8",
+    "category": "catalog gap",
+    "prompt": "What Climateverse data could support research on how extreme heat affects crop yields in India? Separate directly relevant datasets from proxies and clearly state what evidence is missing.",
+    "review_questions": [
+      "Are direct evidence and proxies clearly separated?",
+      "Are absence claims appropriately bounded by the search performed?"
+    ]
+  }
+]

@@ -1,0 +1,31 @@
+{
+  "status": "historical_reference_only",
+  "client": "Claude Desktop Code mode",
+  "model": "claude-sonnet-5",
+  "effort": "high",
+  "queries": "queries.json",
+  "runs": [
+    {
+      "label": "original-dataverse-2026-08-12",
+      "tool_actions": 68,
+      "mcp_tool_actions": 60,
+      "time_to_final_text_seconds": 437,
+      "output_tokens": 24035
+    },
+    {
+      "label": "aifindr-first-run-2026-08-12",
+      "tool_actions": 54,
+      "mcp_tool_actions": 44,
+      "time_to_final_text_seconds": 269,
+      "output_tokens": 17811
+    },
+    {
+      "label": "aifindr-bounded-guidance-2026-08-14",
+      "tool_actions": 41,
+      "mcp_tool_actions": 32,
+      "time_to_final_text_seconds": 266,
+      "output_tokens": 17910
+    }
+  ],
+  "warning": "These totals came from saved Claude Desktop sessions and are not directly interchangeable with new Claude Code CLI runs. Use them for provenance, not as a substitute for a same-client rerun."
+}
