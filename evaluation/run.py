@@ -43,7 +43,6 @@ def _mcp_environment(provider: str) -> dict[str, str]:
                 "AIFINDR_ORG_ID",
                 "AIFINDR_PROJECT_ID",
                 "AIFINDR_SEARCH_ALPHA",
-                "AIFINDR_KNOWLEDGE_VERSION",
             ]
         )
     values = {name: os.environ[name] for name in names if os.environ.get(name)}

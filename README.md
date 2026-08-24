@@ -25,7 +25,6 @@ local `.env` file; see `.env.example`):
 | `AIFINDR_ORG_ID` | yes for search | Organization containing the project |
 | `AIFINDR_PROJECT_ID` | yes for search | Project whose knowledge is searched |
 | `AIFINDR_SEARCH_ALPHA` | no | Hybrid weight from 0 (keyword) to 1 (semantic); default 0.7 |
-| `AIFINDR_KNOWLEDGE_VERSION` | no | Fixed version; empty follows the project default |
 
 MCP clients pass the key through the `env` block of the server entry — the
 key stays in the user's local config and is never sent through the model.

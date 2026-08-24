@@ -189,9 +189,6 @@ async def search_aifindr(query: str, limit: int) -> dict:
         "offset": 0,
         "alpha": settings.aifindr_search_alpha,
     }
-    if settings.aifindr_knowledge_version:
-        payload["version"] = settings.aifindr_knowledge_version
-
     url = (
         f"{settings.aifindr_base_url.rstrip('/')}"
         f"/api/private/projects/{settings.aifindr_project_id}/rag-search"
@@ -236,7 +233,6 @@ async def search_aifindr(query: str, limit: int) -> dict:
             "provider": "aifindr",
             "mode": "hybrid",
             "alpha": settings.aifindr_search_alpha,
-            "knowledge_version": settings.aifindr_knowledge_version or "project-default",
             "source_chunks_considered": len(sources),
         },
     }

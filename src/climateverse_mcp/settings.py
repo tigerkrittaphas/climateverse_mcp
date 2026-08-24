@@ -32,12 +32,6 @@ class Settings(BaseSettings):
         le=1,
         validation_alias="AIFINDR_SEARCH_ALPHA",
     )
-    aifindr_knowledge_version: str = Field(
-        default="",
-        validation_alias="AIFINDR_KNOWLEDGE_VERSION",
-    )
-
-
 @lru_cache
 def get_settings() -> Settings:
     """Cached settings instance."""
