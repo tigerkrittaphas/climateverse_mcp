@@ -33,11 +33,18 @@ def summarize_query(query_dir: Path) -> dict:
     first_text_at = None
     final_text_at = None
     result_event = None
+    mcp_servers: dict[str, str] = {}
 
     for record in records:
         captured_at = record["captured_at"]
         event = record["event"]
         event_type = event.get("type")
+        if event_type == "system" and event.get("subtype") == "init":
+            for mcp_server in event.get("mcp_servers") or []:
+                name = mcp_server.get("name")
+                status = mcp_server.get("status")
+                if name and status:
+                    mcp_servers[name] = status
         if event_type == "result":
             result_event = event
         if event_type == "stream_event":
@@ -73,6 +80,7 @@ def summarize_query(query_dir: Path) -> dict:
     result_subtype = (result_event or {}).get("subtype")
     if result_subtype not in (None, "success"):
         result_failed = True
+    climateverse_mcp_connected = mcp_servers.get("climateverse") == "connected"
     final_answer = (result_event or {}).get("result")
     if isinstance(final_answer, str) and final_answer.strip():
         (query_dir / "answer.md").write_text(final_answer.rstrip() + "\n")
@@ -87,9 +95,13 @@ def summarize_query(query_dir: Path) -> dict:
         if metadata["timed_out"]
         else (
             "ok"
-            if metadata["return_code"] == 0 and result_event and not result_failed
+            if metadata["return_code"] == 0
+            and result_event
+            and not result_failed
+            and climateverse_mcp_connected
             else "error"
         ),
+        "mcp_servers": mcp_servers,
         "tool_actions": len(tool_uses),
         "mcp_tool_actions": sum(
             count for name, count in tool_counts.items() if name.startswith("mcp__climateverse__")

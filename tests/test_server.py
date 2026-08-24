@@ -271,6 +271,15 @@ async def test_search_provider_defaults_to_aifindr(monkeypatch):
     assert result == {"provider": "aifindr", "query": "heat", "limit": 3}
 
 
+def test_settings_ignore_removed_dotenv_keys(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("AIFINDR_KNOWLEDGE_VERSION=v3\n")
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.search_provider == "aifindr"
+
+
 async def test_search_provider_can_select_dataverse(monkeypatch):
     settings = Settings(search_provider="dataverse", _env_file=None)
     monkeypatch.setattr(server, "get_settings", lambda: settings)

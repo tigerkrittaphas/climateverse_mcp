@@ -11,7 +11,11 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 from evaluation import compare, metrics  # noqa: E402
 
 
-def _write_run(tmp_path, resolved_model="claude-sonnet-5"):
+def _write_run(
+    tmp_path,
+    resolved_model="claude-sonnet-5",
+    mcp_status="connected",
+):
     query_dir = tmp_path / "sample" / "q1"
     query_dir.mkdir(parents=True)
     metadata = {
@@ -26,7 +30,20 @@ def _write_run(tmp_path, resolved_model="claude-sonnet-5"):
         "timed_out": False,
     }
     (query_dir / "metadata.json").write_text(json.dumps(metadata))
+    mcp_servers = (
+        [{"name": "climateverse", "status": mcp_status}]
+        if mcp_status is not None
+        else []
+    )
     records = [
+        {
+            "captured_at": "2026-08-24T10:00:00.5+00:00",
+            "event": {
+                "type": "system",
+                "subtype": "init",
+                "mcp_servers": mcp_servers,
+            },
+        },
         {
             "captured_at": "2026-08-24T10:00:01+00:00",
             "event": {
@@ -98,12 +115,29 @@ def test_summarize_query_deduplicates_messages_and_tool_uses(tmp_path):
     assert summary["mcp_tool_actions"] == 1
     assert summary["output_tokens"] == 20
     assert summary["resolved_models"] == ["claude-sonnet-5"]
+    assert summary["mcp_servers"] == {"climateverse": "connected"}
     assert summary["time_to_first_activity_seconds"] == 1
     assert summary["time_to_first_text_seconds"] == 3
     assert summary["time_to_final_text_seconds"] == 3
     assert summary["cost_usd"] == 0.1
     assert summary["status"] == "ok"
     assert summary["permission_denials"] == 0
+
+
+def test_summarize_query_rejects_failed_mcp_initialization(tmp_path):
+    query_dir = _write_run(tmp_path, mcp_status="failed")
+    summary = metrics.summarize_query(query_dir)
+
+    assert summary["status"] == "error"
+    assert summary["mcp_servers"] == {"climateverse": "failed"}
+
+
+def test_summarize_query_rejects_missing_mcp_initialization(tmp_path):
+    query_dir = _write_run(tmp_path, mcp_status=None)
+    summary = metrics.summarize_query(query_dir)
+
+    assert summary["status"] == "error"
+    assert summary["mcp_servers"] == {}
 
 
 def test_summarize_run_aggregates_queries(tmp_path):

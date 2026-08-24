@@ -52,6 +52,8 @@ result event so model drift is visible.
 
 Running the summarizer also extracts each final response to `answer.md`, next to
 its raw events and metadata, so reviewers can inspect the answer directly.
+Runs are marked as errors unless the configured Climateverse MCP explicitly
+reports `connected`, even if Claude exits successfully with an explanatory response.
 
 Raw events, stderr, metadata, and summaries stay under `evaluation/runs/`, which
 is gitignored because responses may quote catalog content. Historical Desktop
