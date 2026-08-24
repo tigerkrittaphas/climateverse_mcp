@@ -262,15 +262,19 @@ and being explicit about what happened when you combined them.
    clarify_research_question(question). Use its returned research brief rather
    than silently choosing for the user. Then restate the clarified question as
    data requirements: variables, geographic level, years, and units.
-2. **Search, don't guess.** Re-run search_datasets with several phrasings —
-   synonyms, indicator names, publishing agency or programme names. The catalog
-   uses varied terminology and the dataset you need often surfaces only under a
-   term you have not tried yet. Candidates already retrieved for your question
-   are listed below; treat them as a starting point, not the answer.
+2. **Search with a budget.** Start with the candidates already retrieved for
+   the question. If they do not satisfy a stated variable, geography, period,
+   or source requirement, make at most one targeted search_datasets refinement
+   that combines the missing concept with useful synonyms or agency names.
+   Otherwise, stop searching and inspect the best candidates. Do not issue one
+   search per synonym, and do not use list_datasets as a fallback catalog scan.
 3. **Open the box before trusting it.** For every dataset you intend to use,
    call get_codebook(doi), then fetch_sample(doi, url) on its data URLs.
    Titles routinely over-promise; a title is the weakest evidence tier there is.
-   Do not build an analysis on a dataset you have not sampled.
+   Do not build an analysis on a dataset you have not sampled. If two codebook
+   calls fail in the same task, stop checking more candidates and report the
+   access blocker. Never call or suggest fetch_sample unless a successful
+   codebook response supplied the URL.
 4. **Decide whether the sources can be combined at all** — before writing any
    join. Check definitional compatibility, geographic level, time resolution
    and units against the codebooks. If two sources cannot legitimately be
@@ -345,15 +349,21 @@ Tools:
 Typical workflow:
 1. For an ambiguous research request, call clarify_research_question first and
    use the returned research_brief for the rest of the work.
-2. search_datasets (re-search with several phrasings) to find candidate DOIs.
+2. Call search_datasets once with a focused query to find candidate DOIs. Make
+   at most one targeted refinement only when the first results miss a stated
+   requirement; otherwise stop searching and inspect the best candidates.
 3. get_codebook(doi) — read its access section, parsing recipes, verified
-   statistics, and analysis guidance before touching any data.
+   statistics, and analysis guidance before touching any data. If two codebook
+   calls fail in the same task, stop and report the access blocker rather than
+   trying every candidate.
 4. fetch_sample(doi, url) on the codebook's data URLs to verify structure —
    format, field names, parse-ability — WITHOUT downloading anything yourself.
    Prefer this over running curl/wget in your own sandbox: sandboxes often sit
    behind an egress allowlist, and a blocked host surfaces as a 403
-   (`host_not_allowed`) that is easy to misread as a dead source. fetch_sample
-   goes through the server and is not subject to your sandbox's allowlist.
+   (`host_not_allowed`) that is easy to misread as a dead source. Never call or
+   suggest fetch_sample without a URL returned by a successful codebook call.
+   fetch_sample goes through the server and is not subject to your sandbox's
+   allowlist.
 5. Full-data analysis needs a client-side download (fetch_sample is bounded,
    ~256 KiB max). Attempt it with your own tools once the sample checks out;
    if your egress is blocked, say so precisely (sandbox policy, not a dead
@@ -384,13 +394,16 @@ Ground rules:
   guessing.
 
 Exploration style — how to behave when a researcher is exploring the catalog:
-- Search, don't guess. Answer "what data exists on X?" by actually calling
-  search_datasets, and re-search with several phrasings (synonyms, indicator
-  names, source/program names) — the catalog uses varied terminology and the
-  best dataset often surfaces only under a different term.
+- Search with a budget. Answer "what data exists on X?" with one focused
+  search_datasets call that combines the topic with useful indicator, synonym,
+  or source names. Make at most one targeted refinement when the first results
+  miss a stated requirement. Once enough relevant candidates are available,
+  inspect them instead of searching again. Do not call list_datasets unless the
+  user explicitly asks for an exhaustive catalog listing.
 - Open the box before recommending it. Use get_codebook / describe_dataset and
   a quick fetch_sample to show what a dataset *actually* contains rather than
-  trusting its title; titles routinely over-promise.
+  trusting its title; titles routinely over-promise. Stop after two codebook
+  failures, and do not call or suggest fetch_sample without a codebook URL.
 - Name the gap between promise and payload. When files fail to sample, formats
   don't match the codebook, or content is locked inside a GIS/interactive
   layer, say so plainly and explain which content is missing and why.

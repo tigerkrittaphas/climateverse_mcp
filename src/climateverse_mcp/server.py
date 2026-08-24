@@ -13,6 +13,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import BaseModel, Field
 
+from .aifindr import search_aifindr
 from .api import api_client
 from .instruction import (
     AGENT_TOOLING,
@@ -37,7 +38,7 @@ def ping() -> str:
     return "pong"
 
 
-async def _search(query: str, limit: int) -> dict:
+async def _dataverse_search(query: str, limit: int) -> dict:
     """Query the Dataverse Search API, paginating until `limit` datasets."""
     per_page = 100
     datasets: list[dict] = []
@@ -79,6 +80,18 @@ async def _search(query: str, limit: int) -> dict:
     return {"total_count": total, "returned": len(datasets), "datasets": datasets}
 
 
+async def _search(query: str, limit: int) -> dict:
+    """Find dataset candidates through the configured search provider."""
+    if not query.strip():
+        raise ToolError("A search query is required.")
+    if limit < 1 or limit > 100:
+        raise ToolError("limit must be between 1 and 100.")
+    settings = get_settings()
+    if settings.search_provider == "dataverse":
+        return await _dataverse_search(query.strip(), limit)
+    return await search_aifindr(query.strip(), limit)
+
+
 @mcp.tool
 async def list_datasets(limit: int = 100) -> dict:
     """List datasets in the ClimateVerse catalog.
@@ -86,12 +99,17 @@ async def list_datasets(limit: int = 100) -> dict:
     Returns compact records (doi, title, description, url) plus the catalog's
     total_count. Use `limit` to page through more.
     """
-    return await _search("*", limit)
+    return await _dataverse_search("*", limit)
 
 
 @mcp.tool
 async def search_datasets(query: str, limit: int = 10) -> dict:
-    """Search the ClimateVerse catalog for datasets matching a query."""
+    """Find relevant ClimateVerse datasets with the configured search provider.
+
+    AIFindr hybrid search is the default and returns unique DOI-level candidates
+    with compact matched excerpts. Dataverse keyword search can be selected in
+    server configuration for comparison or environments without an index.
+    """
     return await _search(query, limit)
 
 
@@ -484,10 +502,10 @@ def _format_candidates(datasets: list[dict]) -> str:
     """Render search hits as a compact list — titles and DOIs, not codebooks."""
     if not datasets:
         return (
-            "_No datasets matched this phrasing._ That is a result about the "
-            "query, not about the catalog: re-run search_datasets with "
-            "synonyms, indicator names, or the publishing agency's name before "
-            "concluding the data does not exist."
+            "_No datasets matched the initial query._ Make at most one targeted "
+            "search_datasets refinement using the missing indicator, synonym, or "
+            "publishing agency. If that is also empty, report that no candidate "
+            "surfaced in the bounded search; do not claim catalog-wide absence."
         )
     lines = []
     for item in datasets:

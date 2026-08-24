@@ -10,16 +10,28 @@ uv sync
 
 ## Configuration
 
-The server calls the ClimateVerse API and needs an API key, read from the
-environment (or a local `.env` file — see `.env.example`):
+The server calls ClimateVerse for dataset details. Dataset discovery uses
+AIFindr hybrid search by default, with Dataverse keyword search available as an
+explicit comparison mode. Credentials are read from the environment (or a
+local `.env` file; see `.env.example`):
 
 | Variable | Required | Description |
 |---|---|---|
 | `CLIMATEVERSE_API_KEY` | yes | Your ClimateVerse API key |
 | `CLIMATEVERSE_API_BASE_URL` | no | API base URL override |
+| `CLIMATEVERSE_SEARCH_PROVIDER` | no | `aifindr` (default) or `dataverse`; there is no silent fallback |
+| `AIFINDR_API_KEY` | yes for search | Raw private key; the server adds `Bearer` |
+| `AIFINDR_BASE_URL` | yes for AIFindr search | AIFindr backend origin |
+| `AIFINDR_ORG_ID` | yes for search | Organization containing the project |
+| `AIFINDR_PROJECT_ID` | yes for search | Project whose knowledge is searched |
+| `AIFINDR_SEARCH_ALPHA` | no | Hybrid weight from 0 (keyword) to 1 (semantic); default 0.7 |
+| `AIFINDR_KNOWLEDGE_VERSION` | no | Fixed version; empty follows the project default |
 
 MCP clients pass the key through the `env` block of the server entry — the
 key stays in the user's local config and is never sent through the model.
+The AIFindr key needs `source:get` access to the configured project. When the
+default provider is not fully configured, search fails with a clear error. Set
+`CLIMATEVERSE_SEARCH_PROVIDER=dataverse` to use the original catalog search.
 
 ## Run
 
@@ -42,6 +54,11 @@ uv run pytest
 ```bash
 claude mcp add climateverse \
   --env CLIMATEVERSE_API_KEY=your-api-key-here \
+  --env CLIMATEVERSE_SEARCH_PROVIDER=aifindr \
+  --env AIFINDR_BASE_URL=https://your-aifindr-api.example.com \
+  --env AIFINDR_API_KEY=key_your-private-api-key \
+  --env AIFINDR_ORG_ID=org_your-organization-id \
+  --env AIFINDR_PROJECT_ID=prj_your-project-id \
   -- uv run --directory /path/to/climateverse_mcp climateverse-mcp
 ```
 
@@ -53,7 +70,14 @@ Or in Claude Desktop's `claude_desktop_config.json`:
     "climateverse": {
       "command": "uv",
       "args": ["run", "--directory", "/path/to/climateverse_mcp", "climateverse-mcp"],
-      "env": { "CLIMATEVERSE_API_KEY": "your-api-key-here" }
+      "env": {
+        "CLIMATEVERSE_API_KEY": "your-api-key-here",
+        "CLIMATEVERSE_SEARCH_PROVIDER": "aifindr",
+        "AIFINDR_BASE_URL": "https://your-aifindr-api.example.com",
+        "AIFINDR_API_KEY": "key_your-private-api-key",
+        "AIFINDR_ORG_ID": "org_your-organization-id",
+        "AIFINDR_PROJECT_ID": "prj_your-project-id"
+      }
     }
   }
 }
