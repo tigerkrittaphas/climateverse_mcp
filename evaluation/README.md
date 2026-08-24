@@ -54,9 +54,9 @@ Running the summarizer also extracts each final response to `answer.md`, next to
 its raw events and metadata, so reviewers can inspect the answer directly.
 
 Raw events, stderr, metadata, and summaries stay under `evaluation/runs/`, which
-is gitignored because responses may quote catalog content. `reference_results.json`
-preserves the earlier Desktop totals, but new comparisons should use paired CLI
-runs because client overhead and tool availability can change the numbers.
+is gitignored because responses may quote catalog content. Historical Desktop
+totals are deliberately excluded: comparisons must use paired CLI runs because
+client overhead and tool availability can change the numbers.
 
 ## Manual review
 

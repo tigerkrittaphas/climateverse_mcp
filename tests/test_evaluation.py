@@ -1,18 +1,17 @@
-"""Tests for the local evaluation metric extractor."""
+"""Tests for the local evaluation harness."""
 
 import json
-import importlib.util
+import sys
 from pathlib import Path
 
-
-METRICS_PATH = Path(__file__).parents[1] / "evaluation" / "metrics.py"
-SPEC = importlib.util.spec_from_file_location("climateverse_evaluation_metrics", METRICS_PATH)
-metrics = importlib.util.module_from_spec(SPEC)
-assert SPEC.loader is not None
-SPEC.loader.exec_module(metrics)
+import pytest
 
 
-def _write_run(tmp_path):
+sys.path.insert(0, str(Path(__file__).parents[1]))
+from evaluation import compare, metrics  # noqa: E402
+
+
+def _write_run(tmp_path, resolved_model="claude-sonnet-5"):
     query_dir = tmp_path / "sample" / "q1"
     query_dir.mkdir(parents=True)
     metadata = {
@@ -75,7 +74,14 @@ def _write_run(tmp_path):
         },
         {
             "captured_at": "2026-08-24T10:00:04+00:00",
-            "event": {"type": "result", "total_cost_usd": 0.1},
+            "event": {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "permission_denials": [],
+                "modelUsage": {resolved_model: {}},
+                "total_cost_usd": 0.1,
+            },
         },
     ]
     (query_dir / "events.jsonl").write_text(
@@ -91,11 +97,13 @@ def test_summarize_query_deduplicates_messages_and_tool_uses(tmp_path):
     assert summary["tool_actions"] == 1
     assert summary["mcp_tool_actions"] == 1
     assert summary["output_tokens"] == 20
-    assert summary["resolved_models"] == []
+    assert summary["resolved_models"] == ["claude-sonnet-5"]
     assert summary["time_to_first_activity_seconds"] == 1
     assert summary["time_to_first_text_seconds"] == 3
     assert summary["time_to_final_text_seconds"] == 3
     assert summary["cost_usd"] == 0.1
+    assert summary["status"] == "ok"
+    assert summary["permission_denials"] == 0
 
 
 def test_summarize_run_aggregates_queries(tmp_path):
@@ -105,3 +113,11 @@ def test_summarize_run_aggregates_queries(tmp_path):
     assert summary["query_count"] == 1
     assert summary["totals"]["tool_actions"] == 1
     assert summary["totals"]["output_tokens"] == 20
+
+
+def test_compare_rejects_different_resolved_models(tmp_path):
+    baseline = _write_run(tmp_path / "baseline")
+    candidate = _write_run(tmp_path / "candidate", resolved_model="claude-sonnet-4-6")
+
+    with pytest.raises(ValueError, match="same resolved_models"):
+        compare.compare_runs(baseline.parent, candidate.parent)

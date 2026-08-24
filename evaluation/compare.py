@@ -32,6 +32,12 @@ def compare_runs(baseline_dir: Path, candidate_dir: Path) -> dict:
     if baseline_ids != candidate_ids:
         raise ValueError("Runs must contain the same query IDs in the same order.")
 
+    for field in ("model", "resolved_models", "effort"):
+        baseline_values = {json.dumps(item[field], sort_keys=True) for item in baseline["queries"]}
+        candidate_values = {json.dumps(item[field], sort_keys=True) for item in candidate["queries"]}
+        if len(baseline_values) != 1 or baseline_values != candidate_values:
+            raise ValueError(f"Runs must use the same {field} for every query.")
+
     totals = {}
     for metric in METRICS:
         old = baseline["totals"][metric]
@@ -60,6 +66,9 @@ def compare_runs(baseline_dir: Path, candidate_dir: Path) -> dict:
     return {
         "baseline": baseline["label"],
         "candidate": candidate["label"],
+        "model": baseline["queries"][0]["model"],
+        "resolved_models": baseline["queries"][0]["resolved_models"],
+        "effort": baseline["queries"][0]["effort"],
         "query_count": len(query_rows),
         "totals": totals,
         "queries": query_rows,
@@ -69,6 +78,10 @@ def compare_runs(baseline_dir: Path, candidate_dir: Path) -> dict:
 def _markdown(comparison: dict) -> str:
     lines = [
         f"# {comparison['candidate']} vs {comparison['baseline']}",
+        "",
+        f"Model: `{comparison['model']}` | resolved: "
+        f"`{', '.join(comparison['resolved_models'])}` | effort: "
+        f"`{comparison['effort']}`",
         "",
         "Negative changes mean the candidate used less time, tokens, or tool work.",
         "",

@@ -69,6 +69,10 @@ def summarize_query(query_dir: Path) -> dict:
     tool_counts = Counter(tool_uses.values())
     result_usage = (result_event or {}).get("usage") or {}
     resolved_models = sorted(((result_event or {}).get("modelUsage") or {}).keys())
+    result_failed = bool((result_event or {}).get("is_error"))
+    result_subtype = (result_event or {}).get("subtype")
+    if result_subtype not in (None, "success"):
+        result_failed = True
     final_answer = (result_event or {}).get("result")
     if isinstance(final_answer, str) and final_answer.strip():
         (query_dir / "answer.md").write_text(final_answer.rstrip() + "\n")
@@ -79,7 +83,13 @@ def summarize_query(query_dir: Path) -> dict:
         "model": metadata["model"],
         "resolved_models": resolved_models,
         "effort": metadata["effort"],
-        "status": "timeout" if metadata["timed_out"] else ("ok" if metadata["return_code"] == 0 else "error"),
+        "status": "timeout"
+        if metadata["timed_out"]
+        else (
+            "ok"
+            if metadata["return_code"] == 0 and result_event and not result_failed
+            else "error"
+        ),
         "tool_actions": len(tool_uses),
         "mcp_tool_actions": sum(
             count for name, count in tool_counts.items() if name.startswith("mcp__climateverse__")
@@ -97,6 +107,7 @@ def summarize_query(query_dir: Path) -> dict:
         if result_event
         else None,
         "turns": (result_event or {}).get("num_turns"),
+        "permission_denials": len((result_event or {}).get("permission_denials") or []),
         "cost_usd": (result_event or {}).get("total_cost_usd"),
     }
 
