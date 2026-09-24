@@ -12,8 +12,12 @@ import httpx
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import BaseModel, Field
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse, Response
 
+from .aifindr import search_aifindr
 from .api import api_client
+from .auth import AuthConfigError, build_auth
 from .instruction import (
     AGENT_TOOLING,
     EDA_INSTRUCTIONS,
@@ -23,6 +27,7 @@ from .instruction import (
     RESEARCH_REPORT_STRUCTURE,
 )
 from .report import render_report as render_report_html
+from .report_store import REPORT_CSP, load_report, save_report
 from .settings import get_settings
 
 mcp = FastMCP(
@@ -37,7 +42,7 @@ def ping() -> str:
     return "pong"
 
 
-async def _search(query: str, limit: int) -> dict:
+async def _dataverse_search(query: str, limit: int) -> dict:
     """Query the Dataverse Search API, paginating until `limit` datasets."""
     per_page = 100
     datasets: list[dict] = []
@@ -79,6 +84,18 @@ async def _search(query: str, limit: int) -> dict:
     return {"total_count": total, "returned": len(datasets), "datasets": datasets}
 
 
+async def _search(query: str, limit: int) -> dict:
+    """Find dataset candidates through the configured search provider."""
+    if not query.strip():
+        raise ToolError("A search query is required.")
+    if limit < 1 or limit > 100:
+        raise ToolError("limit must be between 1 and 100.")
+    settings = get_settings()
+    if settings.search_provider == "dataverse":
+        return await _dataverse_search(query.strip(), limit)
+    return await search_aifindr(query.strip(), limit)
+
+
 @mcp.tool
 async def list_datasets(limit: int = 100) -> dict:
     """List datasets in the ClimateVerse catalog.
@@ -86,12 +103,17 @@ async def list_datasets(limit: int = 100) -> dict:
     Returns compact records (doi, title, description, url) plus the catalog's
     total_count. Use `limit` to page through more.
     """
-    return await _search("*", limit)
+    return await _dataverse_search("*", limit)
 
 
 @mcp.tool
 async def search_datasets(query: str, limit: int = 10) -> dict:
-    """Search the ClimateVerse catalog for datasets matching a query."""
+    """Find relevant ClimateVerse datasets with the configured search provider.
+
+    AIFindr hybrid search is the default and returns unique DOI-level candidates
+    with compact matched excerpts. Dataverse keyword search can be selected in
+    server configuration for comparison or environments without an index.
+    """
     return await _search(query, limit)
 
 
@@ -484,10 +506,10 @@ def _format_candidates(datasets: list[dict]) -> str:
     """Render search hits as a compact list — titles and DOIs, not codebooks."""
     if not datasets:
         return (
-            "_No datasets matched this phrasing._ That is a result about the "
-            "query, not about the catalog: re-run search_datasets with "
-            "synonyms, indicator names, or the publishing agency's name before "
-            "concluding the data does not exist."
+            "_No datasets matched the initial query._ Make at most one targeted "
+            "search_datasets refinement using the missing indicator, synonym, or "
+            "publishing agency. If that is also empty, report that no candidate "
+            "surfaced in the bounded search; do not claim catalog-wide absence."
         )
     lines = []
     for item in datasets:
@@ -566,9 +588,9 @@ async def research(question: str, dois: list[str] | None = None) -> str:
 
 @mcp.tool
 def render_report(
-    out_path: str,
     title: str,
     body_html: str,
+    out_path: str = "",
     lead: str = "",
     doi: str = "",
     meta: list[str] | None = None,
@@ -584,13 +606,32 @@ def render_report(
     the eda() briefing. No <style>, no <script>, no external URLs — embed any
     figures as data: URIs so the file stays self-contained and prints correctly.
 
-    `out_path` is where the .html file is written. Returns the path and byte
-    count plus any warnings; the document itself is not returned, since a
+    Locally, `out_path` is where the .html file is written. On the hosted
+    server `out_path` is ignored: the report is stored and a shareable `url` is
+    returned instead — give that link to the user. Returns the path or url and
+    byte count plus any warnings; the document itself is not returned, since a
     finished report is far too large to be useful in your context.
     """
     document, warnings = render_report_html(
         title=title, body_html=body_html, lead=lead, doi=doi, meta=meta
     )
+    size = len(document.encode("utf-8"))
+
+    bucket = get_settings().reports_bucket
+    if bucket:
+        try:
+            report_id = save_report(bucket, document)
+        except Exception as exc:
+            raise ToolError(f"Could not store the report: {exc}") from exc
+        base = get_settings().public_base_url.rstrip("/")
+        return {
+            "url": f"{base}/reports/{report_id}.html",
+            "bytes": size,
+            "warnings": warnings,
+        }
+
+    if not out_path:
+        raise ToolError("out_path is required: where should the .html file go?")
 
     destination = Path(out_path).expanduser()
     if destination.suffix.lower() not in (".html", ".htm"):
@@ -603,7 +644,7 @@ def render_report(
 
     return {
         "path": str(destination),
-        "bytes": len(document.encode("utf-8")),
+        "bytes": size,
         "warnings": warnings,
     }
 
@@ -620,16 +661,59 @@ def summarize(topic: str) -> str:
     return f"Summarize the latest information about {topic} in a concise paragraph."
 
 
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request: Request) -> Response:
+    """Load-balancer health check. Local only: never calls upstream APIs, so an
+    outage elsewhere cannot get the task recycled."""
+    return PlainTextResponse("ok")
+
+
+@mcp.custom_route("/reports/{report_id}.html", methods=["GET"])
+async def serve_report(request: Request) -> Response:
+    """Serve a report stored by render_report on the hosted server."""
+    bucket = get_settings().reports_bucket
+    report_id = request.path_params["report_id"]
+    document = (
+        await asyncio.to_thread(load_report, bucket, report_id) if bucket else None
+    )
+    if document is None:
+        return PlainTextResponse("Report not found", status_code=404)
+    return Response(
+        document,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Content-Security-Policy": REPORT_CSP,
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
 def main() -> None:
-    """Run the server over stdio (default transport)."""
-    if not get_settings().api_key:
+    """Run over stdio (default) or, with CLIMATEVERSE_TRANSPORT=http, as the
+    hosted server behind OAuth."""
+    settings = get_settings()
+    if not settings.api_key:
         # stderr only — stdout is reserved for the MCP protocol on stdio.
         print(
             "warning: CLIMATEVERSE_API_KEY is not set; API-backed tools will fail.",
             file=sys.stderr,
         )
-    mcp.run()
+    if settings.transport == "stdio":
+        mcp.run()
+        return
 
-
-if __name__ == "__main__":
-    main()
+    try:
+        mcp.auth = build_auth(settings)
+    except AuthConfigError as exc:
+        sys.exit(f"error: {exc}")
+    if mcp.auth is None:
+        print("warning: serving over HTTP WITHOUT authentication.", file=sys.stderr)
+    mcp.run(
+        transport="http",
+        host=settings.http_host,
+        port=settings.http_port,
+        # Only the load balancer can reach the task; trust its X-Forwarded-*.
+        uvicorn_config={"proxy_headers": True, "forwarded_allow_ips": "*"},
+    )

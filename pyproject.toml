@@ -9,6 +9,13 @@ dependencies = [
     "pydantic>=2.0",
 ]
 
+[project.optional-dependencies]
+# Hosted deployment only: OAuth state in DynamoDB and reports in S3.
+aws = [
+    "boto3>=1.35",
+    "py-key-value-aio[dynamodb]",
+]
+
 [project.scripts]
 climateverse-mcp = "climateverse_mcp.server:main"
 

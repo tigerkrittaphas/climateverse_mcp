@@ -1,14 +1,23 @@
 """Smoke tests for the ClimateVerse MCP server."""
 
+import json
 import re
 
+import httpx
 import pytest
 from fastmcp import Client
 from fastmcp.client.elicitation import ElicitResult
 from fastmcp.exceptions import ToolError
 
-from climateverse_mcp import api, server
-from climateverse_mcp.instruction import AGENT_TOOLING, EDA_INSTRUCTIONS, REPORT_TEMPLATE
+from climateverse_mcp import aifindr, api, report_store, server
+from climateverse_mcp.auth import AuthConfigError, build_auth
+from climateverse_mcp.instruction import (
+    AGENT_TOOLING,
+    EDA_INSTRUCTIONS,
+    INSTRUCTIONS,
+    REPORT_TEMPLATE,
+    RESEARCH_INSTRUCTIONS,
+)
 from climateverse_mcp.report import render_report as render_report_html
 from climateverse_mcp.server import _assert_public_host, _normalize_doi, mcp
 from climateverse_mcp.settings import Settings
@@ -23,6 +32,23 @@ async def client(monkeypatch):
         "get_settings",
         lambda: Settings(api_key="", api_base_url="", _env_file=None),
     )
+    monkeypatch.setattr(
+        aifindr,
+        "get_settings",
+        lambda: Settings(
+            api_key="",
+            api_base_url="",
+            aifindr_api_key="",
+            aifindr_org_id="",
+            aifindr_project_id="",
+            _env_file=None,
+        ),
+    )
+    monkeypatch.setattr(
+        server,
+        "get_settings",
+        lambda: Settings(search_provider="aifindr", _env_file=None),
+    )
     async with Client(mcp) as c:
         yield c
 
@@ -32,9 +58,254 @@ async def test_ping(client: Client):
     assert result.data == "pong"
 
 
-async def test_search_requires_api_key(client: Client):
-    with pytest.raises(ToolError, match="CLIMATEVERSE_API_KEY"):
+async def test_search_requires_aifindr_configuration(client: Client):
+    with pytest.raises(ToolError, match="AIFINDR_API_KEY"):
         await client.call_tool("search_datasets", {"query": "rainfall"})
+
+
+def test_aifindr_sources_are_deduplicated_by_doi():
+    sources = [
+        {
+            "title": "Heat dataset",
+            "url": "https://india.climateverse.net/dataset.xhtml?persistentId=doi:10.71646/ABC123",
+            "content": "First matching chunk",
+            "distance": 0.1,
+        },
+        {
+            "title": "Heat dataset",
+            "sourceId": "doi:10.71646/ABC123",
+            "content": "Second matching chunk",
+            "distance": 0.2,
+        },
+        {
+            "title": "Rainfall",
+            "url": "https://doi.org/10.5072/FK2/RAIN01",
+            "content": "Another dataset",
+            "distance": 0.3,
+        },
+    ]
+
+    datasets = aifindr._normalize_sources(
+        sources,
+        limit=10,
+        dataset_base_url="https://india.climateverse.net",
+    )
+
+    assert [item["doi"] for item in datasets] == [
+        "doi:10.71646/ABC123",
+        "doi:10.5072/FK2/RAIN01",
+    ]
+    assert datasets[0]["match_rank"] == 1
+    assert datasets[1]["match_rank"] == 3
+    assert datasets[0]["url"].endswith("persistentId=doi:10.71646/ABC123")
+    assert datasets[1]["url"] == "https://doi.org/10.5072/FK2/RAIN01"
+
+
+def test_aifindr_parses_public_metadata_from_dataverse_export():
+    content = {
+        "status": "OK",
+        "data": [
+            {
+                "datasetUrl": "https://india.climateverse.net/dataset.xhtml?persistentId=doi:10.71646/HEAT01",
+                "datasetPersistentId": "doi:10.71646/HEAT01",
+                "metadataBlocks": {
+                    "citation": {
+                        "fields": [
+                            {"typeName": "title", "value": "Extreme Heat"},
+                            {
+                                "typeName": "dsDescription",
+                                "value": [
+                                    {
+                                        "typeName": "dsDescriptionValue",
+                                        "value": "District-level heat observations.",
+                                    }
+                                ],
+                            },
+                        ]
+                    }
+                },
+            }
+        ],
+    }
+    datasets = aifindr._normalize_sources(
+        [
+            {
+                "title": "",
+                "url": "/private/ingestion/path/dataset_1.json",
+                "content": json.dumps(content),
+                "distance": 0,
+            }
+        ],
+        limit=5,
+    )
+
+    assert datasets == [
+        {
+            "doi": "doi:10.71646/HEAT01",
+            "title": "Extreme Heat",
+            "description": "District-level heat observations.",
+            "url": "https://india.climateverse.net/dataset.xhtml?persistentId=doi:10.71646/HEAT01",
+            "match_rank": 1,
+            "distance": 0,
+        }
+    ]
+    assert "/private/ingestion/path" not in str(datasets)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/private/ingestion/path/dataset.json",
+        "http://localhost/dataset.json",
+        "http://127.0.0.1/dataset.json",
+        "https://catalog.internal/dataset.json",
+        "ftp://india.climateverse.net/dataset.json",
+        "https://user:password@example.com/dataset.json",
+    ],
+)
+def test_aifindr_does_not_expose_non_public_source_urls(url):
+    datasets = aifindr._normalize_sources(
+        [
+            {
+                "title": "Heat doi:10.71646/HEAT01",
+                "url": url,
+                "content": "Heat observations",
+            }
+        ],
+        limit=1,
+    )
+
+    assert datasets[0]["url"] is None
+
+
+async def test_search_uses_one_hybrid_aifindr_request(monkeypatch):
+    settings = Settings(
+        aifindr_base_url="https://api.example.com",
+        aifindr_api_key="key_test",
+        aifindr_org_id="org_test",
+        aifindr_project_id="prj_test",
+        aifindr_search_alpha=0.7,
+        _env_file=None,
+    )
+    monkeypatch.setattr(aifindr, "get_settings", lambda: settings)
+    seen = []
+
+    async def handler(request):
+        seen.append(request)
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "sources": [
+                    {
+                        "title": "Heat",
+                        "url": "https://india.climateverse.net/dataset.xhtml?persistentId=doi:10.71646/HEAT01",
+                        "content": "District heat-wave observations",
+                        "distance": 0.12,
+                    }
+                ]
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def mock_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(aifindr.httpx, "AsyncClient", mock_client)
+    result = await aifindr.search_aifindr("extreme heat", 4)
+
+    assert len(seen) == 1
+    assert seen[0].headers["authorization"] == "Bearer key_test"
+    assert seen[0].headers["x-organization-id"] == "org_test"
+    assert b'"alpha":0.7' in seen[0].content
+    assert b'"limit":12' in seen[0].content
+    assert result["datasets"][0]["doi"] == "doi:10.71646/HEAT01"
+    assert result["retrieval"]["provider"] == "aifindr"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"not json",
+        json.dumps({"sources": {"unexpected": "shape"}}).encode(),
+        json.dumps([{"sources": []}]).encode(),
+    ],
+)
+async def test_aifindr_rejects_malformed_success_responses(monkeypatch, payload):
+    settings = Settings(
+        aifindr_base_url="https://api.example.com",
+        aifindr_api_key="key_test",
+        aifindr_org_id="org_test",
+        aifindr_project_id="prj_test",
+        _env_file=None,
+    )
+    monkeypatch.setattr(aifindr, "get_settings", lambda: settings)
+
+    async def handler(request):
+        return httpx.Response(200, request=request, content=payload)
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def mock_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(aifindr.httpx, "AsyncClient", mock_client)
+    with pytest.raises(ToolError, match="invalid"):
+        await aifindr.search_aifindr("heat", 5)
+
+
+async def test_search_provider_defaults_to_aifindr(monkeypatch):
+    settings = Settings(_env_file=None)
+    monkeypatch.setattr(server, "get_settings", lambda: settings)
+
+    async def fake_aifindr(query, limit):
+        return {"provider": "aifindr", "query": query, "limit": limit}
+
+    monkeypatch.setattr(server, "search_aifindr", fake_aifindr)
+    result = await server._search(" heat ", 3)
+
+    assert result == {"provider": "aifindr", "query": "heat", "limit": 3}
+
+
+def test_settings_ignore_removed_dotenv_keys(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("AIFINDR_KNOWLEDGE_VERSION=v3\n")
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.search_provider == "aifindr"
+
+
+async def test_search_provider_can_select_dataverse(monkeypatch):
+    settings = Settings(search_provider="dataverse", _env_file=None)
+    monkeypatch.setattr(server, "get_settings", lambda: settings)
+
+    async def fake_dataverse(query, limit):
+        return {"provider": "dataverse", "query": query, "limit": limit}
+
+    monkeypatch.setattr(server, "_dataverse_search", fake_dataverse)
+    result = await server._search(" rainfall ", 4)
+
+    assert result == {
+        "provider": "dataverse",
+        "query": "rainfall",
+        "limit": 4,
+    }
+
+
+def test_agent_guidance_bounds_discovery_searches():
+    guidance = " ".join((INSTRUCTIONS + RESEARCH_INSTRUCTIONS).split())
+    assert "at most one targeted" in guidance
+    assert "Do not issue one search per synonym" in guidance
+    assert "do not use list_datasets as a fallback catalog scan" in guidance
+    assert "If two codebook calls fail" in guidance
+    assert "Never call or suggest fetch_sample" in guidance
+    assert "re-search with several phrasings" not in guidance
 
 
 async def test_clarify_research_question_elicits_scope():
@@ -318,3 +589,87 @@ def test_eda_briefing_embeds_the_template_contract():
     assert "--cv-brand-orange" not in briefing
     assert not re.search(r"[A-Za-z0-9+/]{200,}", briefing)
     assert len(briefing) < 12_000
+
+
+# --- hosted deployment -------------------------------------------------------
+
+
+async def test_render_report_tool_requires_out_path_locally(client: Client):
+    with pytest.raises(ToolError, match="out_path is required"):
+        await client.call_tool("render_report", {"title": "T", "body_html": "<p>x</p>"})
+
+
+async def test_render_report_tool_stores_report_when_hosted(monkeypatch):
+    monkeypatch.setattr(
+        server,
+        "get_settings",
+        lambda: Settings(
+            reports_bucket="reports",
+            public_base_url="https://mcp.example.org/",
+            _env_file=None,
+        ),
+    )
+    stored = {}
+
+    def fake_save(bucket, document):
+        stored["bucket"], stored["document"] = bucket, document
+        return "a" * 32
+
+    monkeypatch.setattr(server, "save_report", fake_save)
+    async with Client(mcp) as c:
+        result = await c.call_tool(
+            "render_report",
+            {"out_path": "/ignored.html", "title": "T", "body_html": "<p>x</p>"},
+        )
+    assert result.data["url"] == f"https://mcp.example.org/reports/{'a' * 32}.html"
+    assert stored["bucket"] == "reports"
+    assert result.data["bytes"] == len(stored["document"].encode())
+
+
+def _http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=mcp.http_app()), base_url="http://test"
+    )
+
+
+async def test_health_route():
+    async with _http_client() as http:
+        response = await http.get("/health")
+    assert response.status_code == 200 and response.text == "ok"
+
+
+async def test_report_route_serves_sandboxed_html(monkeypatch):
+    monkeypatch.setattr(
+        server, "get_settings", lambda: Settings(reports_bucket="b", _env_file=None)
+    )
+    monkeypatch.setattr(
+        server,
+        "load_report",
+        lambda bucket, rid: b"<html>r</html>" if rid == "a" * 32 else None,
+    )
+    async with _http_client() as http:
+        found = await http.get(f"/reports/{'a' * 32}.html")
+        missing = await http.get(f"/reports/{'b' * 32}.html")
+    assert found.status_code == 200 and found.text == "<html>r</html>"
+    assert found.headers["content-security-policy"].startswith("sandbox")
+    assert missing.status_code == 404
+
+
+def test_load_report_rejects_malformed_ids_without_calling_s3(monkeypatch):
+    def boom():
+        raise AssertionError("S3 must not be called")
+
+    monkeypatch.setattr(report_store, "_s3", boom)
+    assert report_store.load_report("b", "../secret") is None
+
+
+def test_http_auth_refuses_partial_configuration():
+    settings = Settings(cognito_user_pool_id="pool", _env_file=None)
+    with pytest.raises(AuthConfigError, match="CLIMATEVERSE_COGNITO_CLIENT_ID"):
+        build_auth(settings)
+
+
+def test_http_auth_requires_explicit_opt_out():
+    with pytest.raises(AuthConfigError, match="ALLOW_UNAUTHENTICATED"):
+        build_auth(Settings(_env_file=None))
+    assert build_auth(Settings(allow_unauthenticated=True, _env_file=None)) is None
