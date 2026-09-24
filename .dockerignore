@@ -1,0 +1,10 @@
+.venv
+.git
+.env
+.claude
+.pytest_cache
+**/__pycache__
+evaluation
+tests
+src/climateverse_mcp/brand/parts
+src/climateverse_mcp/brand/dist
