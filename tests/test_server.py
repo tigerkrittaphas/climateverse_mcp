@@ -9,7 +9,8 @@ from fastmcp import Client
 from fastmcp.client.elicitation import ElicitResult
 from fastmcp.exceptions import ToolError
 
-from climateverse_mcp import aifindr, api, server
+from climateverse_mcp import aifindr, api, report_store, server
+from climateverse_mcp.auth import AuthConfigError, build_auth
 from climateverse_mcp.instruction import (
     AGENT_TOOLING,
     EDA_INSTRUCTIONS,
@@ -588,3 +589,87 @@ def test_eda_briefing_embeds_the_template_contract():
     assert "--cv-brand-orange" not in briefing
     assert not re.search(r"[A-Za-z0-9+/]{200,}", briefing)
     assert len(briefing) < 12_000
+
+
+# --- hosted deployment -------------------------------------------------------
+
+
+async def test_render_report_tool_requires_out_path_locally(client: Client):
+    with pytest.raises(ToolError, match="out_path is required"):
+        await client.call_tool("render_report", {"title": "T", "body_html": "<p>x</p>"})
+
+
+async def test_render_report_tool_stores_report_when_hosted(monkeypatch):
+    monkeypatch.setattr(
+        server,
+        "get_settings",
+        lambda: Settings(
+            reports_bucket="reports",
+            public_base_url="https://mcp.example.org/",
+            _env_file=None,
+        ),
+    )
+    stored = {}
+
+    def fake_save(bucket, document):
+        stored["bucket"], stored["document"] = bucket, document
+        return "a" * 32
+
+    monkeypatch.setattr(server, "save_report", fake_save)
+    async with Client(mcp) as c:
+        result = await c.call_tool(
+            "render_report",
+            {"out_path": "/ignored.html", "title": "T", "body_html": "<p>x</p>"},
+        )
+    assert result.data["url"] == f"https://mcp.example.org/reports/{'a' * 32}.html"
+    assert stored["bucket"] == "reports"
+    assert result.data["bytes"] == len(stored["document"].encode())
+
+
+def _http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=mcp.http_app()), base_url="http://test"
+    )
+
+
+async def test_health_route():
+    async with _http_client() as http:
+        response = await http.get("/health")
+    assert response.status_code == 200 and response.text == "ok"
+
+
+async def test_report_route_serves_sandboxed_html(monkeypatch):
+    monkeypatch.setattr(
+        server, "get_settings", lambda: Settings(reports_bucket="b", _env_file=None)
+    )
+    monkeypatch.setattr(
+        server,
+        "load_report",
+        lambda bucket, rid: b"<html>r</html>" if rid == "a" * 32 else None,
+    )
+    async with _http_client() as http:
+        found = await http.get(f"/reports/{'a' * 32}.html")
+        missing = await http.get(f"/reports/{'b' * 32}.html")
+    assert found.status_code == 200 and found.text == "<html>r</html>"
+    assert found.headers["content-security-policy"].startswith("sandbox")
+    assert missing.status_code == 404
+
+
+def test_load_report_rejects_malformed_ids_without_calling_s3(monkeypatch):
+    def boom():
+        raise AssertionError("S3 must not be called")
+
+    monkeypatch.setattr(report_store, "_s3", boom)
+    assert report_store.load_report("b", "../secret") is None
+
+
+def test_http_auth_refuses_partial_configuration():
+    settings = Settings(cognito_user_pool_id="pool", _env_file=None)
+    with pytest.raises(AuthConfigError, match="CLIMATEVERSE_COGNITO_CLIENT_ID"):
+        build_auth(settings)
+
+
+def test_http_auth_requires_explicit_opt_out():
+    with pytest.raises(AuthConfigError, match="ALLOW_UNAUTHENTICATED"):
+        build_auth(Settings(_env_file=None))
+    assert build_auth(Settings(allow_unauthenticated=True, _env_file=None)) is None
