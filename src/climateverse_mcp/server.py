@@ -16,7 +16,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
 from .aifindr import search_aifindr
-from .api import api_client
+from .api import access_hint, api_client, is_anonymous, raise_for_dataverse_status
 from .auth import AuthConfigError, build_auth
 from .instruction import (
     AGENT_TOOLING,
@@ -62,7 +62,7 @@ async def _dataverse_search(query: str, limit: int) -> dict:
                     "order": "asc",
                 },
             )
-            response.raise_for_status()
+            raise_for_dataverse_status(response, "The catalog search")
             data = response.json()["data"]
             total = int(data["total_count"])
             items = data.get("items") or []
@@ -251,9 +251,7 @@ async def _fetch_dataset_meta(doi: str) -> dict:
             "/api/datasets/:persistentId/versions/:latest",
             params={"persistentId": persistent_id},
         )
-        if response.status_code == 404:
-            raise ToolError(f"Dataset not found: {persistent_id}")
-        response.raise_for_status()
+        raise_for_dataverse_status(response, f"Dataset {persistent_id}")
         data = response.json()["data"]
 
     # Flatten metadataBlocks into {typeName: value}.
@@ -286,17 +284,16 @@ async def _fetch_codebook(doi: str) -> str:
     """Download codebook.md from a dataset's latest version."""
     persistent_id = _normalize_doi(doi)
     async with api_client() as client:
-        # Native API: list files in the latest dataset version. Because the
-        # request is authenticated (X-Dataverse-key), ':latest' resolves to the
-        # DRAFT version when one exists — so unpublished codebooks are visible
-        # during development — and falls back to the latest published version.
+        # Native API: list files in the latest dataset version. When the
+        # request is authenticated (X-Dataverse-key) by a user who can see
+        # drafts, ':latest' resolves to the DRAFT version when one exists — so
+        # unpublished codebooks are visible during development. Anonymous
+        # requests get the latest published version.
         response = await client.get(
             "/api/datasets/:persistentId/versions/:latest/files",
             params={"persistentId": persistent_id},
         )
-        if response.status_code == 404:
-            raise ToolError(f"Dataset not found: {persistent_id}")
-        response.raise_for_status()
+        raise_for_dataverse_status(response, f"Dataset {persistent_id}")
         files = response.json()["data"]
 
         codebook = next(
@@ -311,14 +308,16 @@ async def _fetch_codebook(doi: str) -> str:
         )
         if codebook is None:
             labels = [f.get("label") for f in files]
+            version = "latest published version" if is_anonymous() else "latest version"
             raise ToolError(
-                f"No codebook.md in {persistent_id}. Files present: {labels}"
+                f"No codebook.md in the {version} of {persistent_id}. "
+                f"Files present: {labels}.{access_hint()}"
             )
 
         # Access API: download the file content by its id.
         file_id = codebook["dataFile"]["id"]
         content = await client.get(f"/api/access/datafile/{file_id}")
-        content.raise_for_status()
+        raise_for_dataverse_status(content, f"codebook.md of {persistent_id}")
         return content.text
 
 
@@ -528,7 +527,7 @@ async def _bundle_source(doi: str) -> str:
     try:
         metadata = await _fetch_dataset_meta(doi)
         codebook = await _fetch_codebook(doi)
-    except ToolError as exc:
+    except (ToolError, httpx.HTTPError) as exc:
         # One bad DOI must not sink the whole briefing — report it in place so
         # the agent can see which source is unavailable and carry on.
         return f"### {doi}\n\n_Could not be bundled: {exc}_\n"
@@ -694,10 +693,11 @@ def main() -> None:
     """Run over stdio (default) or, with CLIMATEVERSE_TRANSPORT=http, as the
     hosted server behind OAuth."""
     settings = get_settings()
-    if not settings.api_key:
+    if not settings.api_key.strip():
         # stderr only — stdout is reserved for the MCP protocol on stdio.
         print(
-            "warning: CLIMATEVERSE_API_KEY is not set; API-backed tools will fail.",
+            "note: CLIMATEVERSE_API_KEY is not set; reading published datasets "
+            "anonymously.",
             file=sys.stderr,
         )
     if settings.transport == "stdio":
