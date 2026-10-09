@@ -17,7 +17,7 @@ local `.env` file; see `.env.example`):
 
 | Variable | Required | Description |
 |---|---|---|
-| `CLIMATEVERSE_API_KEY` | yes | Your ClimateVerse API key |
+| `CLIMATEVERSE_API_KEY` | no | Your ClimateVerse API key. Without one, only published datasets are visible |
 | `CLIMATEVERSE_API_BASE_URL` | no | API base URL override |
 | `CLIMATEVERSE_SEARCH_PROVIDER` | no | `aifindr` (default) or `dataverse`; there is no silent fallback |
 | `AIFINDR_API_KEY` | yes for search | Raw private key; the server adds `Bearer` |
@@ -55,8 +55,9 @@ as `mcp.tf`, enabled on the `global` workspace. Pushing to `main` runs
 claude mcp add --transport http climateverse https://mcp.climateverse.net/mcp
 ```
 
-Users sign in through the Cognito user pool (invite-only). Dataverse is called
-with one service-account key, so every signed-in user sees the same catalog.
+Users sign in through the Cognito user pool (invite-only). Dataverse is read
+anonymously (no `CLIMATEVERSE_API_KEY`), so every signed-in user sees the same
+published catalog.
 On the hosted server `render_report` stores the report and returns a
 shareable link under `/reports/` instead of writing to disk.
 

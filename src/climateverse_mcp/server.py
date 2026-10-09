@@ -286,10 +286,11 @@ async def _fetch_codebook(doi: str) -> str:
     """Download codebook.md from a dataset's latest version."""
     persistent_id = _normalize_doi(doi)
     async with api_client() as client:
-        # Native API: list files in the latest dataset version. Because the
-        # request is authenticated (X-Dataverse-key), ':latest' resolves to the
-        # DRAFT version when one exists — so unpublished codebooks are visible
-        # during development — and falls back to the latest published version.
+        # Native API: list files in the latest dataset version. When the
+        # request is authenticated (X-Dataverse-key) by a user who can see
+        # drafts, ':latest' resolves to the DRAFT version when one exists — so
+        # unpublished codebooks are visible during development. Anonymous
+        # requests get the latest published version.
         response = await client.get(
             "/api/datasets/:persistentId/versions/:latest/files",
             params={"persistentId": persistent_id},
@@ -697,7 +698,8 @@ def main() -> None:
     if not settings.api_key:
         # stderr only — stdout is reserved for the MCP protocol on stdio.
         print(
-            "warning: CLIMATEVERSE_API_KEY is not set; API-backed tools will fail.",
+            "note: CLIMATEVERSE_API_KEY is not set; reading published datasets "
+            "anonymously.",
             file=sys.stderr,
         )
     if settings.transport == "stdio":

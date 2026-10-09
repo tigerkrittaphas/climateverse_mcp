@@ -26,7 +26,7 @@ from climateverse_mcp.settings import Settings
 @pytest.fixture
 async def client(monkeypatch):
     # Hermetic settings: ignore the developer's real .env / env vars so the
-    # missing-key path is exercised without touching the live API.
+    # no-credential path is exercised without touching the live API.
     monkeypatch.setattr(
         api,
         "get_settings",
@@ -673,3 +673,21 @@ def test_http_auth_requires_explicit_opt_out():
     with pytest.raises(AuthConfigError, match="ALLOW_UNAUTHENTICATED"):
         build_auth(Settings(_env_file=None))
     assert build_auth(Settings(allow_unauthenticated=True, _env_file=None)) is None
+
+
+async def test_api_client_is_anonymous_without_key(monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "get_settings",
+        lambda: Settings(api_key="", api_base_url="https://dv.example.org", _env_file=None),
+    )
+    async with api.api_client() as anonymous:
+        assert "X-Dataverse-key" not in anonymous.headers
+
+    monkeypatch.setattr(
+        api,
+        "get_settings",
+        lambda: Settings(api_key="k", api_base_url="https://dv.example.org", _env_file=None),
+    )
+    async with api.api_client() as authenticated:
+        assert authenticated.headers["X-Dataverse-key"] == "k"
