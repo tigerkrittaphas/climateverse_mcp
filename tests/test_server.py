@@ -691,3 +691,96 @@ async def test_api_client_is_anonymous_without_key(monkeypatch):
     )
     async with api.api_client() as authenticated:
         assert authenticated.headers["X-Dataverse-key"] == "k"
+
+
+@pytest.fixture
+def fake_dataverse(monkeypatch):
+    """Route api_client() to an in-memory Dataverse that records the key sent."""
+    seen: list[str | None] = []
+    status = {"code": 200}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("x-dataverse-key"))
+        if status["code"] != 200:
+            return httpx.Response(status["code"], json={"status": "ERROR"})
+        return httpx.Response(200, json={"data": {"total_count": 0, "items": []}})
+
+    real_client = httpx.AsyncClient
+
+    class Routed(real_client):
+        def __init__(self, *args, **kwargs):
+            if str(kwargs.get("base_url", "")).startswith("https://dv.test"):
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Routed)
+    settings = Settings(
+        api_key="server-key",
+        api_base_url="https://dv.test",
+        search_provider="dataverse",
+        _env_file=None,
+    )
+    monkeypatch.setattr(api, "get_settings", lambda: settings)
+    monkeypatch.setattr(server, "get_settings", lambda: settings)
+    return seen, status
+
+
+async def test_dataverse_key_resolution_over_http(fake_dataverse):
+    # One server for all cases: the module-level `mcp` cannot be restarted on
+    # a second test's event loop.
+    from fastmcp.client.transports import StreamableHttpTransport
+    from fastmcp.utilities.tests import run_server_async
+
+    seen, status = fake_dataverse
+
+    async def list_datasets(headers=None):
+        async with Client(StreamableHttpTransport(url, headers=headers)) as c:
+            return await c.call_tool("list_datasets", {"limit": 1})
+
+    async with run_server_async(mcp) as url:
+        # The key the MCP client sends wins over the server's own.
+        await list_datasets({"X-Dataverse-Key": "user-key"})
+        assert seen[-1] == "user-key"
+
+        # Without one, the server's CLIMATEVERSE_API_KEY applies.
+        await list_datasets()
+        assert seen[-1] == "server-key"
+
+        # A key Dataverse rejects is reported as such, not as a bare 401.
+        status["code"] = 401
+        with pytest.raises(ToolError, match="Dataverse rejected the API key"):
+            await list_datasets({"X-Dataverse-Key": "expired"})
+
+
+def _response(status: int, content_type: str) -> httpx.Response:
+    request = httpx.Request("GET", "https://dv.test/api/x")
+    return httpx.Response(status, headers={"content-type": content_type}, request=request)
+
+
+def test_dataverse_refusals_explain_cause(monkeypatch):
+    monkeypatch.setattr(
+        api, "get_settings", lambda: Settings(api_key="", api_base_url="https://dv.test", _env_file=None)
+    )
+    # Load-balancer WAF block (HTML), not a Dataverse permission decision.
+    with pytest.raises(ToolError, match="rate limit"):
+        api.raise_for_dataverse_status(_response(403, "text/html"), "Dataset X")
+    # Dataverse refusal while anonymous points at the key header.
+    with pytest.raises(ToolError, match="X-Dataverse-Key"):
+        api.raise_for_dataverse_status(_response(403, "application/json"), "Dataset X")
+    with pytest.raises(ToolError, match="not found or not visible"):
+        api.raise_for_dataverse_status(_response(404, "application/json"), "Dataset X")
+
+
+async def test_research_bundle_survives_http_errors(monkeypatch):
+    async def meta(doi):
+        return {"title": "T", "doi": doi}
+
+    async def codebook(doi):
+        raise httpx.HTTPStatusError(
+            "boom", request=httpx.Request("GET", "https://dv.test"), response=_response(500, "text/plain")
+        )
+
+    monkeypatch.setattr(server, "_fetch_dataset_meta", meta)
+    monkeypatch.setattr(server, "_fetch_codebook", codebook)
+    bundle = await server._bundle_source("doi:10.1/X")
+    assert "Could not be bundled" in bundle

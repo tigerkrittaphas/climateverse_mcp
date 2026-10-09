@@ -53,6 +53,10 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
+          # One manifest per deploy instead of an index plus attestation, so
+          # the ECR "keep 10 images" lifecycle rule keeps 10 deploys.
+          provenance: false
+          sbom: false
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ env.REPOSITORY }}:${{ github.sha }}
             ${{ steps.ecr.outputs.registry }}/${{ env.REPOSITORY }}:prod-${{ env.WORKSPACE }}

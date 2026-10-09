@@ -48,7 +48,9 @@ def _mcp_environment(provider: str) -> dict[str, str]:
     values = {name: os.environ[name] for name in names if os.environ.get(name)}
     values["CLIMATEVERSE_SEARCH_PROVIDER"] = provider
 
-    required = ["CLIMATEVERSE_API_KEY"]
+    # No Dataverse key needed: without one the run sees the published catalog,
+    # the same view as the hosted server.
+    required: list[str] = []
     if provider == "aifindr":
         required.extend(
             [

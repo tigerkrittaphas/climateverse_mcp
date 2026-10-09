@@ -55,9 +55,29 @@ as `mcp.tf`, enabled on the `global` workspace. Pushing to `main` runs
 claude mcp add --transport http climateverse https://mcp.climateverse.net/mcp
 ```
 
-Users sign in through the Cognito user pool (invite-only). Dataverse is read
-anonymously (no `CLIMATEVERSE_API_KEY`), so every signed-in user sees the same
-published catalog.
+Users sign in through the Cognito user pool (invite-only). Without a Dataverse
+key the server reads anonymously and sees published datasets only. To use your
+own Dataverse permissions (drafts, restricted files), send your Dataverse API
+token in the `X-Dataverse-Key` header. With Claude Code, keep the token in an
+environment variable and reference it from `.mcp.json`, which expands `${VAR}`
+when the server starts, so the token never sits in the config file:
+
+```json
+{
+  "mcpServers": {
+    "climateverse": {
+      "type": "http",
+      "url": "https://mcp.climateverse.net/mcp",
+      "headers": { "X-Dataverse-Key": "${DATAVERSE_API_KEY}" }
+    }
+  }
+}
+```
+
+The header is used only for calls to the configured Dataverse and is never
+logged or forwarded elsewhere; a key Dataverse rejects is reported as such.
+Clients that cannot set custom headers (such as claude.ai connectors) get the
+anonymous, published-only view.
 On the hosted server `render_report` stores the report and returns a
 shareable link under `/reports/` instead of writing to disk.
 
