@@ -45,17 +45,14 @@ class Settings(BaseSettings):
     # missing secret fails the deploy instead of exposing an open server.
     allow_unauthenticated: bool = False
 
-    # OAuth via AWS Cognito. FastMCP's OAuth proxy fronts the user pool because
-    # MCP clients register dynamically and Cognito does not support that.
-    cognito_user_pool_id: str = ""
-    cognito_region: str = "ap-south-1"
-    cognito_client_id: str = ""
-    cognito_client_secret: str = ""
-    oauth_jwt_signing_key: str = ""
-    # Fernet key encrypting client registrations and upstream tokens at rest.
+    # OAuth: this server is its own authorization server and users sign in
+    # with their ClimateVerse API token (see auth.py).
+    # Fernet key encrypting client registrations, tokens and the users'
+    # Dataverse keys at rest.
     oauth_storage_key: str = ""
     # DynamoDB table holding OAuth state, so sessions survive task restarts.
     oauth_table: str = ""
+    aws_region: str = "ap-south-1"
     oauth_allowed_redirect_uris: list[str] = [
         "http://localhost/*",
         "http://127.0.0.1/*",

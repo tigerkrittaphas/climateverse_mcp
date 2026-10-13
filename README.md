@@ -45,8 +45,8 @@ uv run fastmcp dev src/climateverse_mcp/server.py
 ## Hosted deployment
 
 The same server runs over streamable HTTP behind OAuth at
-`https://mcp.climateverse.net/mcp`. The AWS side (ECS service, Cognito user
-pool, DynamoDB OAuth store, S3 reports bucket) lives in `climateverse-infra`
+`https://mcp.climateverse.net/mcp`. The AWS side (ECS service, DynamoDB
+OAuth store, S3 reports bucket) lives in `climateverse-infra`
 as `mcp.tf`, enabled on the `global` workspace. Pushing to `main` runs
 `.github/workflows/deploy.yml`: tests, then build, push to ECR as
 `prod-global`, and roll the service.
@@ -55,12 +55,19 @@ as `mcp.tf`, enabled on the `global` workspace. Pushing to `main` runs
 claude mcp add --transport http climateverse https://mcp.climateverse.net/mcp
 ```
 
-Users sign in through the Cognito user pool (invite-only). Without a Dataverse
-key the server reads anonymously and sees published datasets only. To use your
-own Dataverse permissions (drafts, restricted files), send your Dataverse API
-token in the `X-Dataverse-Key` header. With Claude Code, keep the token in an
-environment variable and reference it from `.mcp.json`, which expands `${VAR}`
-when the server starts, so the token never sits in the config file:
+Users sign in with their ClimateVerse API token. When the client connects, a
+browser page asks for the token from the user's ClimateVerse account page (API
+Token tab). The server checks it with Dataverse, then keeps it, encrypted, with
+the OAuth tokens it issues to the client, so every tool call sees what that
+user's ClimateVerse account can see (drafts, restricted files). There is no
+separate account to create. When the ClimateVerse token expires or is revoked,
+the next token refresh fails and the client asks the user to sign in again.
+
+A client that can set custom headers may also send a Dataverse API token in
+the `X-Dataverse-Key` header, which takes precedence over the signed-in one.
+With Claude Code, keep the token in an environment variable and reference it
+from `.mcp.json`, which expands `${VAR}` when the server starts, so the token
+never sits in the config file:
 
 ```json
 {
@@ -74,10 +81,8 @@ when the server starts, so the token never sits in the config file:
 }
 ```
 
-The header is used only for calls to the configured Dataverse and is never
+The key is used only for calls to the configured Dataverse and is never
 logged or forwarded elsewhere; a key Dataverse rejects is reported as such.
-Clients that cannot set custom headers (such as claude.ai connectors) get the
-anonymous, published-only view.
 On the hosted server `render_report` stores the report and returns a
 shareable link under `/reports/` instead of writing to disk.
 
@@ -89,10 +94,10 @@ definition:
 | `CLIMATEVERSE_TRANSPORT` | `http` to serve over HTTP (default `stdio`) |
 | `CLIMATEVERSE_HTTP_HOST` / `_PORT` | Bind address (the image uses `0.0.0.0:8000`) |
 | `CLIMATEVERSE_PUBLIC_BASE_URL` | Public origin, e.g. `https://mcp.climateverse.net` |
-| `CLIMATEVERSE_COGNITO_USER_POOL_ID`, `_REGION`, `_CLIENT_ID`, `_CLIENT_SECRET` | Cognito app client |
-| `CLIMATEVERSE_OAUTH_JWT_SIGNING_KEY` | Signs the tokens issued to MCP clients |
-| `CLIMATEVERSE_OAUTH_STORAGE_KEY` | Fernet key encrypting OAuth state at rest |
+| `CLIMATEVERSE_API_BASE_URL` | ClimateVerse (Dataverse) that sign-in tokens are checked against |
+| `CLIMATEVERSE_OAUTH_STORAGE_KEY` | Fernet key encrypting OAuth state and users' API tokens at rest |
 | `CLIMATEVERSE_OAUTH_TABLE` | DynamoDB table for OAuth state |
+| `CLIMATEVERSE_AWS_REGION` | Region of that table (default `ap-south-1`) |
 | `CLIMATEVERSE_REPORTS_BUCKET` | S3 bucket for rendered reports |
 
 HTTP mode refuses to start with OAuth partly or not configured. For a quick

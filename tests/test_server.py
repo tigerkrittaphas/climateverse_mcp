@@ -664,8 +664,8 @@ def test_load_report_rejects_malformed_ids_without_calling_s3(monkeypatch):
 
 
 def test_http_auth_refuses_partial_configuration():
-    settings = Settings(cognito_user_pool_id="pool", _env_file=None)
-    with pytest.raises(AuthConfigError, match="CLIMATEVERSE_COGNITO_CLIENT_ID"):
+    settings = Settings(oauth_table="table", _env_file=None)
+    with pytest.raises(AuthConfigError, match="CLIMATEVERSE_OAUTH_STORAGE_KEY"):
         build_auth(settings)
 
 

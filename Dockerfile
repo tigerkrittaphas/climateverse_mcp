@@ -1,4 +1,4 @@
-# Hosted ClimateVerse MCP server (streamable HTTP + Cognito OAuth).
+# Hosted ClimateVerse MCP server (streamable HTTP + ClimateVerse token sign-in).
 FROM ghcr.io/astral-sh/uv:0.8-python3.12-bookworm-slim AS build
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
