@@ -221,3 +221,68 @@ async def test_tools_reach_dataverse_as_the_signed_in_user(oauth, monkeypatch):
         async with httpx.AsyncClient() as raw:
             anonymous = await raw.post(url, json={})
         assert anonymous.status_code == 401
+
+
+CLAUDE_CODE = "https://claude.ai/oauth/claude-code-client-metadata"
+
+
+async def test_clients_identified_by_metadata_document_url(oauth, monkeypatch):
+    # Claude Code skips registration and sends the URL of its client metadata
+    # document as client_id, then calls back on a random loopback port.
+    from fastmcp.server.auth.cimd import CIMDDocument, CIMDFetcher
+
+    async def fetch(self, url):
+        assert url == CLAUDE_CODE
+        return CIMDDocument(
+            client_id=CLAUDE_CODE,
+            client_name="Claude Code",
+            redirect_uris=["http://localhost/callback", "http://127.0.0.1/callback"],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+            token_endpoint_auth_method="none",
+        )
+
+    monkeypatch.setattr(CIMDFetcher, "fetch", fetch)
+    _, http = oauth
+
+    metadata = (await http.get("/.well-known/oauth-authorization-server")).json()
+    assert metadata["client_id_metadata_document_supported"] is True
+    assert "none" in metadata["token_endpoint_auth_methods_supported"]
+
+    redirect = "http://localhost:49152/callback"
+    verifier = secrets.token_urlsafe(48)
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+        .rstrip(b"=")
+        .decode()
+    )
+    response = await http.get(
+        "/authorize",
+        params={
+            "response_type": "code",
+            "client_id": CLAUDE_CODE,
+            "redirect_uri": redirect,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "state": "st4te",
+        },
+    )
+    assert response.status_code == 302, response.text
+    request_id = parse_qs(urlparse(response.headers["location"]).query)["request"][0]
+    assert "Claude Code" in (await http.get("/login", params={"request": request_id})).text
+
+    signed_in = await http.post("/login", data={"request": request_id, "token": "good-token"})
+    assert signed_in.status_code == 303
+    assert signed_in.headers["location"].startswith(redirect)
+    code = parse_qs(urlparse(signed_in.headers["location"]).query)["code"][0]
+    tokens = await http.post(
+        "/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect,
+            "client_id": CLAUDE_CODE,
+            "code_verifier": verifier,
+        },
+    )
+    assert tokens.status_code == 200, tokens.text

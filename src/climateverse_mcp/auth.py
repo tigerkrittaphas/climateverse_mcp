@@ -17,8 +17,10 @@ from urllib.parse import parse_qs
 
 import httpx
 from fastmcp.server.auth import AccessToken, OAuthProvider
+from fastmcp.server.auth.cimd import CIMDClientManager
 from fastmcp.server.auth.redirect_validation import validate_redirect_uri
 from key_value.aio.protocols import AsyncKeyValue
+from mcp.server.auth.handlers.metadata import MetadataHandler
 from mcp.server.auth.provider import (
     AuthorizationCode,
     AuthorizationParams,
@@ -28,6 +30,7 @@ from mcp.server.auth.provider import (
     TokenError,
     construct_redirect_uri,
 )
+from mcp.server.auth.routes import build_metadata, cors_middleware
 from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
@@ -82,12 +85,21 @@ class DataverseTokenProvider(OAuthProvider):
         self.dataverse_url = dataverse_url.rstrip("/")
         self.storage = storage
         self.allowed_redirect_uris = allowed_redirect_uris
+        # Clients such as Claude Code identify themselves by the URL of a
+        # Client ID Metadata Document instead of registering.
+        self._cimd = CIMDClientManager(allowed_redirect_uri_patterns=allowed_redirect_uris)
 
     # Clients
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
         record = await self.storage.get(client_id, collection="clients")
-        return OAuthClientInformationFull.model_validate(record) if record else None
+        if record:
+            return OAuthClientInformationFull.model_validate(record)
+        if self._cimd.is_cimd_client_id(client_id):
+            # Fetched (and HTTP-cached) by fastmcp, which validates the
+            # document and the redirect URIs it lists.
+            return await self._cimd.get_client(client_id)
+        return None
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         for uri in client_info.redirect_uris or []:
@@ -122,10 +134,35 @@ class DataverseTokenProvider(OAuthProvider):
         return f"{str(self.base_url).rstrip('/')}/login?request={request_id}"
 
     def get_routes(self, mcp_path: str | None = None) -> list[Route]:
-        return [
-            *super().get_routes(mcp_path),
-            Route("/login", self._login, methods=["GET", "POST"]),
+        routes = [
+            self._metadata_route(route)
+            if isinstance(route, Route)
+            and route.path.startswith("/.well-known/oauth-authorization-server")
+            else route
+            for route in super().get_routes(mcp_path)
         ]
+        return [*routes, Route("/login", self._login, methods=["GET", "POST"])]
+
+    def _metadata_route(self, route: Route) -> Route:
+        """Advertise metadata-document client IDs and public clients, which
+        the SDK's default authorization server metadata leaves out."""
+        metadata = build_metadata(
+            self.base_url,  # type: ignore[arg-type]
+            self.service_documentation_url,
+            self.client_registration_options or ClientRegistrationOptions(),
+            self.revocation_options or RevocationOptions(),
+        )
+        metadata.client_id_metadata_document_supported = True
+        metadata.token_endpoint_auth_methods_supported = [
+            *(metadata.token_endpoint_auth_methods_supported or []),
+            "none",
+        ]
+        return Route(
+            route.path,
+            endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
+            methods=route.methods or ["GET", "OPTIONS"],
+            name=route.name,
+        )
 
     async def _login(self, request: Request) -> Response:
         if request.method == "POST":
