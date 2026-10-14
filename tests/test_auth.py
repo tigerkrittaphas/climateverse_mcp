@@ -286,3 +286,12 @@ async def test_clients_identified_by_metadata_document_url(oauth, monkeypatch):
         },
     )
     assert tokens.status_code == 200, tokens.text
+
+
+def test_default_redirects_admit_aifindr_hub_only_at_its_callback():
+    from fastmcp.server.auth.redirect_validation import validate_redirect_uri
+
+    allowed = Settings(_env_file=None).oauth_allowed_redirect_uris
+    assert validate_redirect_uri("https://api.saas.aifindr.ai/mcp/oauth/callback", allowed)
+    assert not validate_redirect_uri("https://api.saas.aifindr.ai/elsewhere", allowed)
+    assert not validate_redirect_uri("https://evil.example/mcp/oauth/callback", allowed)

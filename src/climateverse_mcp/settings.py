@@ -58,6 +58,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1/*",
         "https://claude.ai/api/mcp/auth_callback",
         "https://claude.com/api/mcp/auth_callback",
+        "https://api.saas.aifindr.ai/mcp/oauth/callback",
     ]
 
     # When set, render_report stores reports in S3 and returns a link served by
